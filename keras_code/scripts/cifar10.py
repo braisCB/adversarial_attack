@@ -5,6 +5,7 @@ import numpy as np
 from keras.preprocessing.image import ImageDataGenerator
 from keras import layers, models, regularizers, optimizers, losses
 from keras.callbacks import LearningRateScheduler
+from keras import backend as K
 import os
 import json
 from keras.utils import to_categorical
@@ -12,7 +13,7 @@ from keras.utils import to_categorical
 
 finetuning = False
 optimizer = optimizers.adam(lr=1e-3)
-weights = 'imagenet'
+weights = None
 adam=True
 pooling = 'avg'
 epochs = 40 if finetuning else 130
@@ -22,6 +23,7 @@ force_training = False
 adversarial_lr = 1e-2
 
 filename = 'cifar10_finetuning_' + str(finetuning) + '_adam_' + str(adam) + '_weights_' + str(weights) +'.json'
+print(filename)
 
 generator = ImageDataGenerator(
     width_shift_range=5. / 32,
@@ -43,6 +45,7 @@ def scheduler(adam=True):
             lr = .0008
         if adam:
             lr /= 10.
+        print('lr: ', lr)
         return lr
 
     return sch
@@ -58,8 +61,13 @@ if __name__ == '__main__':
 
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 
+        # x_train = x_train / 127.5 - 1.
+        # x_test = x_test / 127.5 - 1.
+
         x_train = preprocess(x_train)
         x_test = preprocess(x_test)
+
+        print(x_train.max(), x_train.min())
 
         input_shape = (32, 32, 3)
         classes = len(np.unique(y_train))
@@ -98,6 +106,8 @@ if __name__ == '__main__':
             model = models.Model(inputs=base_model.inputs, outputs=x)
             model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc'])
 
+            model.summary()
+
             callbacks = []
             if not finetuning:
                 callbacks.append(
@@ -110,7 +120,7 @@ if __name__ == '__main__':
                 callbacks=callbacks,
                 validation_data=(x_test, y_test),
                 validation_steps=x_test.shape[0] // batch_size,
-                verbose=1
+                verbose=2
             )
 
             if not os.path.isdir(model_folder):
@@ -122,6 +132,10 @@ if __name__ == '__main__':
         scores = adversarial_rank.get_adversarial_scores(
             x_test, y_test, Ns=Ns, batch_size=batch_size, lr=adversarial_lr
         )
+
+        del adversarial_rank
+        del model
+        K.clear_session()
 
         if not os.path.isdir(info_folder):
             os.makedirs(info_folder)
