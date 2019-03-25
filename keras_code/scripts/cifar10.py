@@ -3,7 +3,7 @@ from keras_code.scripts import small_networks, model_folder, info_folder
 from keras.datasets import cifar10
 import numpy as np
 from keras.preprocessing.image import ImageDataGenerator
-from keras import layers, models, regularizers, optimizers, losses
+from keras import layers, models, regularizers, optimizers, initializers
 from keras.callbacks import LearningRateScheduler
 from keras import backend as K
 import os
@@ -51,6 +51,13 @@ def scheduler(adam=True):
     return sch
 
 
+def reset_weights(model, kernel_initializer='he_normal'):
+    initial_weights = model.get_weights()
+    k_eval = lambda placeholder: placeholder.eval(session=K.get_session())
+    new_weights = [k_eval(initializers.get(kernel_initializer)(w.shape)) for w in initial_weights]
+    model.set_weights(new_weights)
+
+
 if __name__ == '__main__':
     os.chdir('../../')
 
@@ -83,6 +90,9 @@ if __name__ == '__main__':
             model = models.load_model(network_file)
         else:
             base_model = network(include_top=False, weights=weights, input_shape=input_shape, pooling=pooling)
+
+            if weights is None:
+                reset_weights(base_model)
 
             if finetuning:
                 base_model.trainable = False
