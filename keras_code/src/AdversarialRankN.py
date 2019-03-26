@@ -14,7 +14,9 @@ class AdversarialRankN:
             self.model.targets[0], self.model.outputs[0]), self.model.inputs)
         self.adversarial_func = K.function([self.model.inputs[0], self.model.targets[0], lp], [gradient[0], self.model.outputs[0]])
 
-    def get_adversarial_scores(self, X, y, Ns, lr=1e-4, constraint=None, batch_size=10):
+    def get_adversarial_scores(
+            self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+    ):
         if self.adversarial_func is None:
             self.build()
 
@@ -27,6 +29,9 @@ class AdversarialRankN:
         y_argmax = np.asarray(y).argmax(axis=-1)
 
         X_adversarial = X[active_indexes].copy()
+
+        v_dX = np.zeros_like(X_adversarial)
+        s_dX = np.zeros_like(X_adversarial)
 
         batch_not_computed = np.ones((len(Ns), batch_size), dtype=bool)
 
@@ -52,7 +57,10 @@ class AdversarialRankN:
 
             incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
 
-            X_adversarial[incompleted] -= lr * gradient[incompleted] # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
+            s_dX[incompleted] = beta2 * v_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
+
+            X_adversarial[incompleted] -= alpha * v_dX[incompleted] / (np.sqrt(s_dX[incompleted]) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -60,11 +68,19 @@ class AdversarialRankN:
                 active_indexes = active_indexes[incompleted]
                 batch_not_computed = batch_not_computed[:, incompleted]
                 X_adversarial = X_adversarial[incompleted]
+                v_dX = v_dX[incompleted]
+                s_dX = s_dX[incompleted]
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
                     batch_not_computed = np.concatenate(
                         (batch_not_computed, np.ones((len(Ns), nslots), dtype=bool)), axis=1
+                    )
+                    v_dX = np.concatenate(
+                        (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=1
+                    )
+                    s_dX = np.concatenate(
+                        (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=1
                     )
                     X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
@@ -75,7 +91,7 @@ class AdversarialRankN:
     def gain_function(cls, y_true, y_pred):
         y_pred = cls.clip(K.epsilon(), 1. - K.epsilon())(y_pred)
         # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1)
+        return -1. * K.sum(y_true * K.log(1. - y_pred) + (1. - y_true) * K.log(y_pred), axis=-1)
 
     @staticmethod
     def compute_dist(X, X_adversarial):
