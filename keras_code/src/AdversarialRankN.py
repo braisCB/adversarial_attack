@@ -33,10 +33,13 @@ class AdversarialRankN:
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)
 
+        iters = np.zeros(batch_size)
+
         batch_not_computed = np.ones((len(Ns), batch_size), dtype=bool)
 
         cont = 0
         while len(active_indexes):
+            iters += 1.
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes))
 
@@ -60,7 +63,10 @@ class AdversarialRankN:
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
             s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
 
-            X_adversarial[incompleted] -= alpha * v_dX[incompleted] / (np.sqrt(s_dX[incompleted]) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            v_dX_c = v_dX[incompleted] / (1. - np.power(beta1, iters[incompleted]))
+            s_dX_c = s_dX[incompleted] / (1. - np.power(beta2, iters[incompleted]))
+
+            X_adversarial[incompleted] -= alpha * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -70,6 +76,7 @@ class AdversarialRankN:
                 X_adversarial = X_adversarial[incompleted]
                 v_dX = v_dX[incompleted]
                 s_dX = s_dX[incompleted]
+                iters = iters[incompleted]
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
@@ -82,6 +89,7 @@ class AdversarialRankN:
                     s_dX = np.concatenate(
                         (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
+                    iters = np.concatenate((iters, np.zeros(nslots)))
                     X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             cont += 1
