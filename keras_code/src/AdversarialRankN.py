@@ -14,7 +14,7 @@ class AdversarialRankN:
             self.model.targets[0], self.model.outputs[0]), self.model.inputs)
         self.adversarial_func = K.function([self.model.inputs[0], self.model.targets[0], lp], [gradient[0], self.model.outputs[0]])
 
-    def get_adversarial_scores(self, X, y, Ns, lr=1e-2, constraint=None, batch_size=10):
+    def get_adversarial_scores(self, X, y, Ns, lr=1e-4, constraint=None, batch_size=10):
         if self.adversarial_func is None:
             self.build()
 
@@ -24,7 +24,7 @@ class AdversarialRankN:
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
-        y_argmin = np.asarray(y).argmin(axis=-1).reshape((-1, 1))
+        y_argmax = np.asarray(y).argmax(axis=-1)
 
         X_adversarial = X[active_indexes].copy()
 
@@ -32,17 +32,18 @@ class AdversarialRankN:
 
         cont = 0
         while len(active_indexes):
-            if cont % 1000 == 0:
-                print('Remaining :', len(inactive_indexes) + len(active_indexes))
+            if cont % 100 == 0:
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes))
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], 0])
 
             rank_output = (-1. * output).argsort(axis=-1)
-
-            pos_output = (y_argmin[active_indexes] == rank_output).argmax(axis=-1)
+            y_output = output[range(len(output)), y_argmax[active_indexes]]
 
             for i, n in enumerate(Ns):
-                completed = np.where((pos_output >= n) & batch_not_computed[i])[0]
+                # pos_output = (rank_output == n).argmax(axis=-1)
+                y_thresh = output[range(len(output)), rank_output[:, n]]
+                completed = np.where((y_thresh >= y_output) & batch_not_computed[i])[0]
                 if len(completed):
                     pos = active_indexes[completed]
                     scores[n]['dist'][pos] = self.compute_dist(X[pos], X_adversarial[completed])
@@ -73,7 +74,8 @@ class AdversarialRankN:
     @classmethod
     def gain_function(cls, y_true, y_pred):
         y_pred = cls.clip(K.epsilon(), 1. - K.epsilon())(y_pred)
-        return K.sum(y_true * K.log(1. - y_pred), axis=-1)
+        # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
+        return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1)
 
     @staticmethod
     def compute_dist(X, X_adversarial):
@@ -86,7 +88,7 @@ class AdversarialRankN:
         diff /= np.maximum(1e-6, diff.sum(axis=1, keepdims=True))
         diff = diff * np.log(diff)
         diff[np.isinf(diff) | np.isnan(diff)] = 0.
-        return np.log(nfeats) - diff.sum(axis=1)
+        return (np.log(nfeats) - diff.sum(axis=1)) / np.log(nfeats)
 
     @staticmethod
     def clip(min_value, max_value):

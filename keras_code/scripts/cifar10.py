@@ -18,9 +18,9 @@ adam=True
 pooling = 'avg'
 epochs = 40 if finetuning else 130
 batch_size = 128
-Ns = [1, 3, 5]
+Ns = [1]
 force_training = False
-adversarial_lr = 1e-2
+adversarial_lr = 1e-4
 
 filename = 'cifar10_finetuning_' + str(finetuning) + '_adam_' + str(adam) + '_weights_' + str(weights) +'.json'
 print(filename)
@@ -89,7 +89,7 @@ if __name__ == '__main__':
         if os.path.isfile(network_file) and not force_training:
             model = models.load_model(network_file)
         else:
-            base_model = network(include_top=False, weights=weights, input_shape=input_shape, pooling=pooling)
+            base_model = network(include_top=True, weights=weights, input_shape=input_shape, pooling=None, classes=classes)
 
             if weights is None:
                 reset_weights(base_model)
@@ -102,15 +102,15 @@ if __name__ == '__main__':
             x = base_model(base_model.input)
 
             # x = layers.Flatten()(x)
+            # #
+            # x = layers.Dense(1024, use_bias=False, kernel_initializer='he_normal',
+            #                  kernel_regularizer=regularizers.l2(5e-4))(x)
+            # x = layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, gamma_initializer='ones')(x)
+            # x = layers.Activation('relu')(x)
             #
-            x = layers.Dense(1024, use_bias=False, kernel_initializer='he_normal',
-                             kernel_regularizer=regularizers.l2(5e-4))(x)
-            x = layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, gamma_initializer='ones')(x)
-            x = layers.Activation('relu')(x)
-
-            x = layers.Dense(classes, use_bias=True, kernel_initializer='he_normal',
-                             kernel_regularizer=regularizers.l2(5e-4))(x)
-            x = layers.Activation('softmax')(x)
+            # x = layers.Dense(classes, use_bias=True, kernel_initializer='he_normal',
+            #                  kernel_regularizer=regularizers.l2(5e-4))(x)
+            # x = layers.Activation('softmax')(x)
 
             # this is the model we will train
             model = models.Model(inputs=base_model.inputs, outputs=x)
