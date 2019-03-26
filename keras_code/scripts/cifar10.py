@@ -20,7 +20,7 @@ epochs = 40 if finetuning else 130
 batch_size = 128
 Ns = [1]
 force_training = False
-alpha = 1e-4
+alpha = 5e-5
 
 filename = 'cifar10_finetuning_' + str(finetuning) + '_adam_' + str(adam) + '_weights_' + str(weights) +'.json'
 print(filename)

@@ -58,7 +58,7 @@ class AdversarialRankN:
             incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
 
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
-            s_dX[incompleted] = beta2 * v_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
+            s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
 
             X_adversarial[incompleted] -= alpha * v_dX[incompleted] / (np.sqrt(s_dX[incompleted]) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
@@ -77,14 +77,17 @@ class AdversarialRankN:
                         (batch_not_computed, np.ones((len(Ns), nslots), dtype=bool)), axis=1
                     )
                     v_dX = np.concatenate(
-                        (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=1
+                        (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
                     s_dX = np.concatenate(
-                        (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=1
+                        (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
                     X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             cont += 1
+        for i in scores:
+            scores[i]['dist'] = scores[i]['dist'].tolist()
+            scores[i]['entropy'] = scores[i]['entropy'].tolist()
         return scores[Ns[0]] if is_int else scores
 
     @classmethod
@@ -104,7 +107,7 @@ class AdversarialRankN:
         diff /= np.maximum(1e-6, diff.sum(axis=1, keepdims=True))
         diff = diff * np.log(diff)
         diff[np.isinf(diff) | np.isnan(diff)] = 0.
-        return (np.log(nfeats) - diff.sum(axis=1)) / np.log(nfeats)
+        return -1. * diff.sum(axis=1) / np.log(nfeats)
 
     @staticmethod
     def clip(min_value, max_value):
