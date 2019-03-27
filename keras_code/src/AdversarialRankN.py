@@ -37,11 +37,14 @@ class AdversarialRankN:
 
         batch_not_computed = np.ones((len(Ns), batch_size), dtype=bool)
 
+        ndims = [1] * X.ndim
+        ndims[0] = -1
+
         cont = 0
         while len(active_indexes):
             iters += 1.
             if cont % 100 == 0:
-                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes))
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max())
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], 0])
 
@@ -63,10 +66,10 @@ class AdversarialRankN:
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
             s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
 
-            v_dX_c = v_dX[incompleted] / (1. - np.power(beta1, iters[incompleted]))
-            s_dX_c = s_dX[incompleted] / (1. - np.power(beta2, iters[incompleted]))
+            v_dX_c = v_dX[incompleted] # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
+            s_dX_c = s_dX[incompleted] # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
 
-            X_adversarial[incompleted] -= alpha * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -111,10 +114,10 @@ class AdversarialRankN:
     @staticmethod
     def compute_entropy(X, X_adversarial):
         diff = np.square(X - X_adversarial).reshape((-1, np.prod(X.shape[1:])))
+        diff = np.clip(diff, 1e-8, 1. - 1e-8)
         nfeats = diff.shape[-1]
-        diff /= np.maximum(1e-6, diff.sum(axis=1, keepdims=True))
+        diff /= diff.sum(axis=1, keepdims=True)
         diff = diff * np.log(diff)
-        diff[np.isinf(diff) | np.isnan(diff)] = 0.
         return -1. * diff.sum(axis=1) / np.log(nfeats)
 
     @staticmethod
@@ -130,3 +133,11 @@ class AdversarialRankN:
             return s, grad
 
         return clip_by_value
+
+    @staticmethod
+    def get_alpha(alpha, iters):
+        new_alpha = alpha * np.ones_like(iters)
+        #new_alpha[iters > 400] *= 5.
+        #new_alpha[iters > 800] *= 5.
+        return new_alpha
+
