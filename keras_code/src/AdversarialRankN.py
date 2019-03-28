@@ -43,8 +43,6 @@ class AdversarialRankN:
         cont = 0
         while len(active_indexes):
             iters += 1.
-            if cont % 100 == 0:
-                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max())
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], 0])
 
@@ -95,6 +93,8 @@ class AdversarialRankN:
                     iters = np.concatenate((iters, np.zeros(nslots)))
                     X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
+            if cont % 100 == 0:
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
         for i in scores:
             scores[i]['dist'] = scores[i]['dist'].tolist()
