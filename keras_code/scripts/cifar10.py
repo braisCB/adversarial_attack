@@ -1,3 +1,5 @@
+from keras_code.src import backend
+from keras import backend as K
 from keras_code.src.AdversarialRankN import AdversarialRankN
 from keras_code.scripts import small_networks, model_folder, info_folder
 from keras.datasets import cifar10
@@ -5,7 +7,6 @@ import numpy as np
 from keras.preprocessing.image import ImageDataGenerator
 from keras import layers, models, regularizers, optimizers, initializers
 from keras.callbacks import LearningRateScheduler
-from keras import backend as K
 import os
 import json
 from keras.utils import to_categorical

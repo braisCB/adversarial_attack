@@ -1,4 +1,4 @@
-from keras import backend as K, losses
+from keras import backend as K, layers
 import numpy as np
 
 
