@@ -40,7 +40,7 @@ class AdversarialRankN:
 
         batch_not_computed = np.ones((len(Ns), batch_size), dtype=bool)
 
-        ndims = [1] * X.ndim
+        ndims = [1] * X_active.ndim
         ndims[0] = -1
 
         cont = 0

@@ -49,7 +49,7 @@ class FromDiskGenerator(Sequence):
     ):
         self.x = x_set
         self.batch_size = batch_size
-        self.indices = np.arange(self.x.shape[0]).astype(int)
+        self.indices = np.arange(len(self.x)).astype(int)
         self.target_size = target_size
         self.preprocess_func = preprocess_func
         self.memory_batch = {}
@@ -66,7 +66,7 @@ class FromDiskGenerator(Sequence):
                 self.__load_batch_data(memory_batch_idx)
                 self.lock.release()
         target_size = self.memory_batch[idxs[0]].shape
-        output = np.zeros((len(idxs,) + target_size))
+        output = np.zeros(((len(idxs), ) + target_size))
         for i, idx in enumerate(idxs):
             output[i] = self.memory_batch[idx]
             del self.memory_batch[idx]
@@ -76,7 +76,7 @@ class FromDiskGenerator(Sequence):
         inds = self.indices[
             memory_batch_idx * self.batch_size:min(len(self.x), (memory_batch_idx + 1) * self.batch_size)
         ]
-        memory_batch_x = np.array([image.load_img(x) for x in self.x[inds]])
+        memory_batch_x = np.array([image.img_to_array(image.load_img(self.x[ind], target_size=self.target_size[:2], interpolation='bicubic')) for ind in inds])
         if self.preprocess_func is not None:
             memory_batch_x = self.preprocess_func(memory_batch_x)
         memory_batch_dict = dict(zip(inds, memory_batch_x))
