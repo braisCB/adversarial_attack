@@ -12,7 +12,9 @@ class AdversarialRankN:
         lp = K.learning_phase()
         gradient = K.gradients(self.gain_function(
             self.model.targets[0], self.model.outputs[0]), self.model.inputs)
-        self.adversarial_func = K.function([self.model.inputs[0], self.model.targets[0], lp], [gradient[0], self.model.outputs[0]])
+        self.adversarial_func = K.function(
+            [self.model.inputs[0], self.model.targets[0], lp], [gradient[0], self.model.outputs[0]]
+        )
 
     def get_adversarial_scores(
             self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
@@ -28,7 +30,8 @@ class AdversarialRankN:
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
         y_argmax = np.asarray(y).argmax(axis=-1)
 
-        X_adversarial = X[active_indexes].copy()
+        X_active = X[active_indexes]
+        X_adversarial = X_active.copy()
 
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)
@@ -55,8 +58,8 @@ class AdversarialRankN:
                 completed = np.where((y_thresh >= y_output) & batch_not_computed[i])[0]
                 if len(completed):
                     pos = active_indexes[completed]
-                    scores[n]['dist'][pos] = self.compute_dist(X[pos], X_adversarial[completed])
-                    scores[n]['entropy'][pos] = self.compute_entropy(X[pos], X_adversarial[completed])
+                    scores[n]['dist'][pos] = self.compute_dist(X_active[completed], X_adversarial[completed])
+                    scores[n]['entropy'][pos] = self.compute_entropy(X_active[completed], X_adversarial[completed])
                     batch_not_computed[i, completed] = False
 
             incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
@@ -75,6 +78,7 @@ class AdversarialRankN:
                 active_indexes = active_indexes[incompleted]
                 batch_not_computed = batch_not_computed[:, incompleted]
                 X_adversarial = X_adversarial[incompleted]
+                X_active = X_active[incompleted]
                 v_dX = v_dX[incompleted]
                 s_dX = s_dX[incompleted]
                 iters = iters[incompleted]
@@ -91,7 +95,8 @@ class AdversarialRankN:
                         (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
                     iters = np.concatenate((iters, np.zeros(nslots)))
-                    X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
+                    X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
+                    X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
