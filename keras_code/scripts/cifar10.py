@@ -21,7 +21,7 @@ epochs = 40 if finetuning else 130
 batch_size = 128
 Ns = [1]
 force_training = False
-alpha = 100e-5
+alpha = 10e-5
 
 filename = 'cifar10_finetuning_' + str(finetuning) + '_adam_' + str(adam) + '_weights_' + str(weights) +'.json'
 print(filename)
@@ -150,6 +150,7 @@ if __name__ == '__main__':
             scores = adversarial_rank.get_adversarial_scores(
                 x_test, y_test, Ns=Ns, batch_size=batch_size, alpha=alpha
             )
+
 
         # del adversarial_rank
         # del model

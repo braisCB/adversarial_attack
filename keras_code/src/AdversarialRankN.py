@@ -103,9 +103,8 @@ class AdversarialRankN:
 
     @classmethod
     def gain_function(cls, y_true, y_pred):
-        y_pred = cls.clip(K.epsilon(), 1. - K.epsilon())(y_pred)
         # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        return -1. * K.sum(y_true * K.log(1. - y_pred) + (1. - y_true) * K.log(y_pred), axis=-1)
+        return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
 
     @staticmethod
     def compute_dist(X, X_adversarial):
