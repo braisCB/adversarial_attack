@@ -17,7 +17,7 @@ filename = 'imagenet_rank.json'
 image_batch_size = 1000
 batch_size = 32
 alpha = 1e-4
-Ns = [5, 1]
+Ns = [5]
 optimizer = optimizers.Adam(1e-3)
 
 

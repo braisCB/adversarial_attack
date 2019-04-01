@@ -4,11 +4,10 @@ import numpy as np
 
 class AdversarialRankN:
 
-    def __init__(self, model, input_range=2, epsilon=5e-2):
+    def __init__(self, model, epsilon=5e-2):
         self.model = model
         self.adversarial_func = None
         self.epsilon = epsilon
-        self.input_range = input_range
 
     def build(self, n):
         lp = K.learning_phase()
@@ -46,6 +45,8 @@ class AdversarialRankN:
         X_active = X[active_indexes]
         X_adversarial = X_active.copy()
         active_targets = np.zeros_like(y[active_indexes])
+        X_min = X_active.min()
+        X_max = X_active.max()
 
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)
@@ -109,13 +110,17 @@ class AdversarialRankN:
                     )
                     iters = np.concatenate((iters, np.zeros(nslots)))
                     X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
+                    X_min = min(X_min, X_active.min())
+                    X_max = max(X_max, X_active.max())
                     X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
-        scores['dist'] = scores['dist'].tolist()
+        scores['dist'] = (scores['dist'] / (X_max - X_min)).tolist()
         scores['entropy'] = scores['entropy'].tolist()
+        scores['min'] = X_min
+        scores['max'] = X_max
         return scores
 
     def gain_function(self, y_true, y_pred, y_target, factor):
@@ -128,7 +133,7 @@ class AdversarialRankN:
         # return -1. * K.sum(y_target * K.log(1. - y_target_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
 
     def compute_dist(self, X, X_adversarial):
-        return np.linalg.norm(((X - X_adversarial) / self.input_range).reshape((-1, np.prod(X.shape[1:]))), axis=1)
+        return np.linalg.norm((X - X_adversarial).reshape((-1, np.prod(X.shape[1:]))), axis=1)
 
     def get_target(self, X, y_argmax, n):
         y_pred = self.model.predict(X)
