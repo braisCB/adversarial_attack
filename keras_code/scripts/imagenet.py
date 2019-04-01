@@ -16,7 +16,7 @@ meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'imagenet.json'
 image_batch_size = 1000
 batch_size = 32
-alpha = 1e-4
+alpha = 5e-5
 Ns = [1]
 optimizer = optimizers.Adam(1e-3)
 

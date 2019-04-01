@@ -20,8 +20,8 @@ large_networks = [
 
 
 small_networks = [
-    # (keras_applications.vgg16.VGG16, keras_applications.vgg16.preprocess_input),
-    # (keras_applications.vgg19.VGG19, keras_applications.vgg19.preprocess_input),
+    (keras_applications.vgg16.VGG16, keras_applications.vgg16.preprocess_input),
+    (keras_applications.vgg19.VGG19, keras_applications.vgg19.preprocess_input),
     (keras_applications.resnet_v2.ResNet50V2, keras_applications.resnet_v2.preprocess_input),
     (keras_applications.resnext.ResNeXt50, keras_applications.resnext.preprocess_input),
     (keras_applications.inception_v3.InceptionV3, keras_applications.inception_v3.preprocess_input),
