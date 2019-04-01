@@ -27,7 +27,14 @@ class AdversarialRankN:
 
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
-        y_pred = self.model.predict(X, batch_size=batch_size, verbose=2)
+        y_pred = []
+        index = 0
+        while index < len(X):
+            print(index, ' of ', len(X))
+            new_index = min(len(X), index + batch_size)
+            y_pred.append(self.model.predict(X[index:new_index], batch_size=batch_size, verbose=2))
+            index = new_index
+        y_pred = np.concatenate(y_pred, axis=0)
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
         y_argmax = np.argmax(y, axis=-1).reshape((-1,1))
         y_targets = y_pred_argsort[y_pred_argsort != y_argmax].reshape((y_argmax.shape[0], -1))
@@ -56,6 +63,7 @@ class AdversarialRankN:
 
         X_active = X[active_indexes]
         X_adversarial = X_active.copy()
+        y_pred = self.model.predict()
 
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)

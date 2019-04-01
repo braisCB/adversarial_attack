@@ -59,6 +59,8 @@ class FromDiskGenerator(Sequence):
         return len(self.x)
 
     def __getitem__(self, idxs):
+        if isinstance(idxs, slice):
+            idxs = np.arange(idxs.start, idxs.stop, idxs.step)
         for idx in idxs:
             if idx not in self.memory_batch:
                 self.lock.acquire()
