@@ -4,19 +4,17 @@ import numpy as np
 
 class AdversarialRankN:
 
-    def __init__(self, model, input_range=2, epsilon=1e-2):
+    def __init__(self, model, input_range=2):
         self.model = model
         self.adversarial_func = None
-        self.epsilon = epsilon
         self.input_range = input_range
 
     def build(self):
         lp = K.learning_phase()
-        targets = layers.Input(shape=self.model.output_shape[1:])
         gradient = K.gradients(self.gain_function(
-            self.model.targets[0], self.model.outputs[0], targets), self.model.inputs)
+            self.model.targets[0], self.model.outputs[0]), self.model.inputs)
         self.adversarial_func = K.function(
-            [self.model.inputs[0], self.model.targets[0], targets, lp], [gradient[0], self.model.outputs[0]]
+            [self.model.inputs[0], self.model.targets[0], lp], [gradient[0], self.model.outputs[0]]
         )
 
     def get_adversarial_scores(
@@ -27,28 +25,7 @@ class AdversarialRankN:
 
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
-        y_pred = self.model.predict(X, batch_size=batch_size, verbose=2)
-        y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
-        y_argmax = np.argmax(y, axis=-1).reshape((-1,1))
-        y_targets = y_pred_argsort[y_pred_argsort != y_argmax].reshape((y_argmax.shape[0], -1))
-        scores = {}
-        for n in Ns:
-            targets = np.zeros_like(y_pred)
-            for i in range(y_pred.shape[0]):
-                targets[i][y_targets[:n]] = 1.
-            scores[n] = self.get_adversarial_scores_for_targets(
-                X, y, targets, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                beta2=beta2, epsilon=epsilon
-            )
-        return scores
-
-    def get_adversarial_scores_for_targets(
-            self, X, y, targets, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
-    ):
-        if self.adversarial_func is None:
-            self.build()
-
-        scores = {'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X))}
+        scores = {n: {'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X))} for n in Ns}
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
@@ -62,6 +39,8 @@ class AdversarialRankN:
 
         iters = np.zeros(batch_size)
 
+        batch_not_computed = np.ones((len(Ns), batch_size), dtype=bool)
+
         ndims = [1] * X_active.ndim
         ndims[0] = -1
 
@@ -69,17 +48,22 @@ class AdversarialRankN:
         while len(active_indexes):
             iters += 1.
 
-            gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], targets[active_indexes], 0])
+            gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], 0])
 
+            rank_output = (-1. * output).argsort(axis=-1)
             y_output = output[range(len(output)), y_argmax[active_indexes]]
-            y_thresh = np.argmax(output * targets[active_indexes], axis=-1)
-            completed = np.where(y_thresh >= y_output)[0]
-            if len(completed):
-                pos = active_indexes[completed]
-                scores['dist'][pos] = self.compute_dist(X_active[completed], X_adversarial[completed])
-                scores['entropy'][pos] = self.compute_entropy(X_active[completed], X_adversarial[completed])
 
-            incompleted = np.where(y_thresh < y_output)[0]
+            for i, n in enumerate(Ns):
+                # pos_output = (rank_output == n).argmax(axis=-1)
+                y_thresh = output[range(len(output)), rank_output[:, n]]
+                completed = np.where((y_thresh >= y_output) & batch_not_computed[i])[0]
+                if len(completed):
+                    pos = active_indexes[completed]
+                    scores[n]['dist'][pos] = self.compute_dist(X_active[completed], X_adversarial[completed])
+                    scores[n]['entropy'][pos] = self.compute_entropy(X_active[completed], X_adversarial[completed])
+                    batch_not_computed[i, completed] = False
+
+            incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
 
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
             s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
@@ -93,6 +77,7 @@ class AdversarialRankN:
 
             if len(incompleted) != batch_size:
                 active_indexes = active_indexes[incompleted]
+                batch_not_computed = batch_not_computed[:, incompleted]
                 X_adversarial = X_adversarial[incompleted]
                 X_active = X_active[incompleted]
                 v_dX = v_dX[incompleted]
@@ -101,6 +86,9 @@ class AdversarialRankN:
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
+                    batch_not_computed = np.concatenate(
+                        (batch_not_computed, np.ones((len(Ns), nslots), dtype=bool)), axis=1
+                    )
                     v_dX = np.concatenate(
                         (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
@@ -114,16 +102,15 @@ class AdversarialRankN:
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
-        scores['dist'] = scores['dist'].tolist()
-        scores['entropy'] = scores['entropy'].tolist()
-        return scores
+        for i in scores:
+            scores[i]['dist'] = scores[i]['dist'].tolist()
+            scores[i]['entropy'] = scores[i]['entropy'].tolist()
+        return scores[Ns[0]] if is_int else scores
 
-    def gain_function(self, y_true, y_pred, y_target):
+    @classmethod
+    def gain_function(cls, y_true, y_pred):
         # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        y_true_pred = K.max(y_true * y_pred, axis=-1, keepdims=True)
-        y_target_pred = K.relu(y_true_pred - y_pred + self.epsilon)
-        y_target_pred = self.clip(0., 1. - K.epsilon())(y_target_pred)
-        return -1. * K.sum(y_target * K.log(1. - y_target_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
+        return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
 
     def compute_dist(self, X, X_adversarial):
         return np.linalg.norm(((X - X_adversarial) / self.input_range).reshape((-1, np.prod(X.shape[1:]))), axis=1)
