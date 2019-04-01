@@ -4,17 +4,17 @@ import numpy as np
 
 class AdversarialRankN:
 
-    def __init__(self, model, input_range=2, epsilon=1e-2):
+    def __init__(self, model, input_range=2, epsilon=5e-2):
         self.model = model
         self.adversarial_func = None
         self.epsilon = epsilon
         self.input_range = input_range
 
-    def build(self):
+    def build(self, n):
         lp = K.learning_phase()
         targets = layers.Input(shape=self.model.output_shape[1:])
         gradient = K.gradients(self.gain_function(
-            self.model.targets[0], self.model.outputs[0], targets), self.model.inputs)
+            self.model.targets[0], self.model.outputs[0], targets, 1./n), self.model.inputs)
         self.adversarial_func = K.function(
             [self.model.inputs[0], self.model.targets[0], targets, lp], [gradient[0], self.model.outputs[0]]
         )
@@ -22,29 +22,13 @@ class AdversarialRankN:
     def get_adversarial_scores(
             self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
     ):
-        if self.adversarial_func is None:
-            self.build()
-
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
-        y_pred = []
-        index = 0
-        while index < len(X):
-            print(index, ' of ', len(X))
-            new_index = min(len(X), index + batch_size)
-            y_pred.append(self.model.predict(X[index:new_index], batch_size=batch_size, verbose=2))
-            index = new_index
-        y_pred = np.concatenate(y_pred, axis=0)
-        y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
-        y_argmax = np.argmax(y, axis=-1).reshape((-1,1))
-        y_targets = y_pred_argsort[y_pred_argsort != y_argmax].reshape((y_argmax.shape[0], -1))
         scores = {}
         for n in Ns:
-            targets = np.zeros_like(y_pred)
-            for i in range(y_pred.shape[0]):
-                targets[i][y_targets[:n]] = 1.
+            self.build(n)
             scores[n] = self.get_adversarial_scores_for_targets(
-                X, y, targets, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
+                X, y, n, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
                 beta2=beta2, epsilon=epsilon
             )
         return scores
@@ -52,8 +36,6 @@ class AdversarialRankN:
     def get_adversarial_scores_for_targets(
             self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
     ):
-        if self.adversarial_func is None:
-            self.build()
 
         scores = {'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X))}
 
@@ -76,7 +58,7 @@ class AdversarialRankN:
         cont = 0
         while len(active_indexes):
             first_iter = np.where(iters == 0.)[0]
-            if len(first_iter):
+            if len(first_iter) > 0:
                 active_targets[first_iter] = self.get_target(
                     X_active[first_iter], y_argmax[active_indexes[first_iter]], n
                 )
@@ -86,7 +68,7 @@ class AdversarialRankN:
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
-            y_thresh = np.argmax(output * active_targets, axis=-1)
+            y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
             if len(completed):
                 pos = active_indexes[completed]
@@ -101,7 +83,7 @@ class AdversarialRankN:
             v_dX_c = v_dX[incompleted] # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
             s_dX_c = s_dX[incompleted] # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
 
-            X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            X_adversarial[incompleted] -= self.get_alpha(alpha, y_output[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -136,12 +118,14 @@ class AdversarialRankN:
         scores['entropy'] = scores['entropy'].tolist()
         return scores
 
-    def gain_function(self, y_true, y_pred, y_target):
+    def gain_function(self, y_true, y_pred, y_target, factor):
         # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        y_true_pred = K.max(y_true * y_pred, axis=-1, keepdims=True)
-        y_target_pred = K.relu(y_true_pred - y_pred + self.epsilon)
-        y_target_pred = self.clip(0., 1. - K.epsilon())(y_target_pred)
-        return -1. * K.sum(y_target * K.log(1. - y_target_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
+        y_pred = K.clip(y_pred, 0., factor)
+        return -1 * K.sum(y_target * K.log(y_pred) + y_true * K.log(1. - y_pred), axis=-1)
+        # y_true_pred = K.max(y_true * y_pred, axis=-1, keepdims=True)
+        # y_target_pred = K.relu(y_true_pred - y_pred + self.epsilon)
+        # y_target_pred = self.clip(0., 1. - K.epsilon())(y_target_pred)
+        # return -1. * K.sum(y_target * K.log(1. - y_target_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
 
     def compute_dist(self, X, X_adversarial):
         return np.linalg.norm(((X - X_adversarial) / self.input_range).reshape((-1, np.prod(X.shape[1:]))), axis=1)
@@ -149,10 +133,10 @@ class AdversarialRankN:
     def get_target(self, X, y_argmax, n):
         y_pred = self.model.predict(X)
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
-        y_targets = y_pred_argsort[y_pred_argsort != y_argmax].reshape((y_argmax.shape[0], -1))
+        y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_argmax.shape[0], -1))
         targets = np.zeros_like(y_pred)
-        for i in range(y_pred.shape[0]):
-            targets[i][y_targets[:n]] = 1.
+        for i, y_target in enumerate(y_targets):
+            targets[i, y_target[:n]] = 1.
         return targets
 
     @staticmethod
@@ -179,8 +163,8 @@ class AdversarialRankN:
         return clip_by_value
 
     @staticmethod
-    def get_alpha(alpha, iters):
-        new_alpha = alpha * np.ones_like(iters)
-        #new_alpha[iters > 400] *= 5.
-        #new_alpha[iters > 800] *= 5.
+    def get_alpha(alpha, y_output):
+        new_alpha = alpha * np.ones_like(y_output)
+        new_alpha[y_output > .75] *= 10.
+        new_alpha[y_output > .95] *= 10.
         return new_alpha
