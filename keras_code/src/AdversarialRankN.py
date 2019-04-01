@@ -165,6 +165,6 @@ class AdversarialRankN:
     @staticmethod
     def get_alpha(alpha, y_output):
         new_alpha = alpha * np.ones_like(y_output)
-        new_alpha[y_output > .75] *= 10.
         new_alpha[y_output > .95] *= 10.
+        new_alpha[y_output > .99] *= 10.
         return new_alpha
