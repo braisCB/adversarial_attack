@@ -50,7 +50,7 @@ class AdversarialRankN:
         return scores
 
     def get_adversarial_scores_for_targets(
-            self, X, y, targets, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+            self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
     ):
         if self.adversarial_func is None:
             self.build()
@@ -63,7 +63,7 @@ class AdversarialRankN:
 
         X_active = X[active_indexes]
         X_adversarial = X_active.copy()
-        y_pred = self.model.predict()
+        active_targets = np.zeros_like(y[active_indexes])
 
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)
@@ -75,12 +75,18 @@ class AdversarialRankN:
 
         cont = 0
         while len(active_indexes):
+            first_iter = np.where(iters == 0.)[0]
+            if len(first_iter):
+                active_targets[first_iter] = self.get_target(
+                    X_active[first_iter], y_argmax[active_indexes[first_iter]], n
+                )
+
             iters += 1.
 
-            gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], targets[active_indexes], 0])
+            gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
-            y_thresh = np.argmax(output * targets[active_indexes], axis=-1)
+            y_thresh = np.argmax(output * active_targets, axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
             if len(completed):
                 pos = active_indexes[completed]
@@ -101,6 +107,7 @@ class AdversarialRankN:
 
             if len(incompleted) != batch_size:
                 active_indexes = active_indexes[incompleted]
+                active_targets = active_targets[incompleted]
                 X_adversarial = X_adversarial[incompleted]
                 X_active = X_active[incompleted]
                 v_dX = v_dX[incompleted]
@@ -109,6 +116,9 @@ class AdversarialRankN:
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
+                    active_targets = np.concatenate(
+                        (active_targets, np.zeros((nslots,) + active_targets.shape[1:])), axis=0
+                    )
                     v_dX = np.concatenate(
                         (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
@@ -135,6 +145,15 @@ class AdversarialRankN:
 
     def compute_dist(self, X, X_adversarial):
         return np.linalg.norm(((X - X_adversarial) / self.input_range).reshape((-1, np.prod(X.shape[1:]))), axis=1)
+
+    def get_target(self, X, y_argmax, n):
+        y_pred = self.model.predict(X)
+        y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
+        y_targets = y_pred_argsort[y_pred_argsort != y_argmax].reshape((y_argmax.shape[0], -1))
+        targets = np.zeros_like(y_pred)
+        for i in range(y_pred.shape[0]):
+            targets[i][y_targets[:n]] = 1.
+        return targets
 
     @staticmethod
     def compute_entropy(X, X_adversarial):
@@ -165,4 +184,3 @@ class AdversarialRankN:
         #new_alpha[iters > 400] *= 5.
         #new_alpha[iters > 800] *= 5.
         return new_alpha
-
