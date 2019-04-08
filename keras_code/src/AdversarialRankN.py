@@ -125,8 +125,8 @@ class AdversarialRankN:
 
     def gain_function(self, y_true, y_pred, y_target, factor):
         # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        y_pred = K.clip(y_pred, 0., factor)
-        return -1 * K.sum(y_target * K.log(y_pred) + y_true * K.log(1. - y_pred), axis=-1)
+        y_pred_clippend = K.clip(y_pred / factor, 0., 1.)
+        return -1 * K.sum(y_target * K.log(y_pred_clippend) + y_true * K.log(1. - y_pred), axis=-1)
         # y_true_pred = K.max(y_true * y_pred, axis=-1, keepdims=True)
         # y_target_pred = K.relu(y_true_pred - y_pred + self.epsilon)
         # y_target_pred = self.clip(0., 1. - K.epsilon())(y_target_pred)
@@ -170,6 +170,6 @@ class AdversarialRankN:
     @staticmethod
     def get_alpha(alpha, y_output):
         new_alpha = alpha * np.ones_like(y_output)
-        new_alpha[y_output > .95] *= 10.
-        new_alpha[y_output > .99] *= 10.
+        # new_alpha[y_output > .95] *= 2.
+        # new_alpha[y_output > .99] *= 2.
         return new_alpha

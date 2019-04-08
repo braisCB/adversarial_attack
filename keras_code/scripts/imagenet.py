@@ -15,9 +15,9 @@ label_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/ILSVRC2012_va
 meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'imagenet_rank.json'
 image_batch_size = 1000
-batch_size = 32
+batch_size = 15
 alpha = 1e-4
-Ns = [5]
+Ns = [5, 1]
 optimizer = optimizers.Adam(1e-3)
 
 
@@ -61,6 +61,7 @@ if __name__ == '__main__':
         y = to_categorical(image_labels, nclasses)
 
         network_name = network.__name__
+        print('NETWORK :', network_name)
 
         with graph.as_default():
             adversarial_rank = AdversarialRankN(model=model)
