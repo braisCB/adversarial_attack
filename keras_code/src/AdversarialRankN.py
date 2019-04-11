@@ -6,7 +6,7 @@ from keras_code.src.AdversarialModule import AdversarialModule
 class AdversarialRankN(AdversarialModule):
 
     def __init__(self, model):
-        self.model = model
+        super(AdversarialRankN, self).__init__(model)
         self.adversarial_func = None
 
     def build(self, n):
@@ -36,7 +36,13 @@ class AdversarialRankN(AdversarialModule):
             self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
     ):
 
-        scores = {'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X))}
+        diff_image = np.zeros(self.model.input_shape[1:])
+        square_diff_image = np.zeros(self.model.input_shape[1:])
+        count_finished = 0
+        scores = {
+            'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X)),
+            'mean': np.zeros(len(X)), 'variance': np.zeros(len(X)), 'zero_variance': np.zeros(len(X))
+        }
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
@@ -71,10 +77,17 @@ class AdversarialRankN(AdversarialModule):
             y_output = output[range(len(output)), y_argmax[active_indexes]]
             y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
-            if len(completed):
+            if len(completed) > 0:
                 pos = active_indexes[completed]
-                scores['dist'][pos] = self.compute_dist(X_active[completed], X_adversarial[completed])
-                scores['entropy'][pos] = self.compute_entropy(X_active[completed], X_adversarial[completed])
+                diff = X_adversarial[completed] - X_active[completed]
+                scores['dist'][pos] = self.compute_dist(diff)
+                scores['entropy'][pos] = self.compute_entropy(diff)
+                scores['mean'][pos] = self.compute_mean(diff)
+                scores['variance'][pos] = self.compute_variance(diff)
+                scores['zero_variance'][pos] = self.compute_zero_variance(diff)
+                diff_image += np.sum(diff, axis=0)
+                square_diff_image += np.sum(np.square(diff), axis=0)
+                count_finished += len(completed)
 
             incompleted = np.where(y_thresh < y_output)[0]
 
@@ -119,8 +132,15 @@ class AdversarialRankN(AdversarialModule):
             cont += 1
         scores['dist'] = (scores['dist'] / (X_max - X_min)).tolist()
         scores['entropy'] = scores['entropy'].tolist()
+        scores['mean'] = scores['mean'].tolist()
+        scores['variance'] = scores['variance'].tolist()
+        scores['zero_variance'] = scores['zero_variance'].tolist()
         scores['min'] = X_min
         scores['max'] = X_max
+        mean = (diff_image / count_finished).tolist()
+        variance = square_diff_image / count_finished - np.square(mean)
+        scores['image_mean'] = mean.tolist()
+        scores['image_variance'] = variance.tolist()
         return scores
 
     def gain_function(self, y_true, y_pred, y_target, factor):

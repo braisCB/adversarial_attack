@@ -3,10 +3,10 @@ import numpy as np
 from keras_code.src.AdversarialModule import AdversarialModule
 
 
-class AdversarialRankN(AdversarialModule):
+class AdversarialPhishing(AdversarialModule):
 
     def __init__(self, model):
-        self.model = model
+        super(AdversarialPhishing, self).__init__(model)
         self.adversarial_func = None
 
     def build(self, n):
@@ -25,7 +25,14 @@ class AdversarialRankN(AdversarialModule):
 
         is_float = isinstance(threshs, float)
         threshs = np.asarray([threshs]) if is_float else threshs
-        scores = {thresh: {'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X))} for thresh in threshs}
+        scores = {
+            thresh: {
+                'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X)),
+                'mean': np.zeros(len(X)), 'variance': np.zeros(len(X)), 'zero_variance': np.zeros(len(X))
+            } for thresh in threshs
+        }
+        diff_image = {thresh: np.zeros(self.model.input_shape[1:]) for thresh in threshs}
+        square_diff_image = {thresh: np.zeros(self.model.input_shape[1:]) for thresh in threshs}
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
@@ -58,8 +65,14 @@ class AdversarialRankN(AdversarialModule):
                 completed = np.where((y_output >= thresh) & batch_not_computed[i])[0]
                 if len(completed):
                     pos = active_indexes[completed]
-                    scores[thresh]['dist'][pos] = self.compute_dist(X_active[completed], X_adversarial[completed])
-                    scores[thresh]['entropy'][pos] = self.compute_entropy(X_active[completed], X_adversarial[completed])
+                    diff = X_adversarial[completed] - X_active[completed]
+                    scores[thresh]['dist'][pos] = self.compute_dist(diff)
+                    scores[thresh]['entropy'][pos] = self.compute_entropy(diff)
+                    scores[thresh]['mean'][pos] = self.compute_mean(diff)
+                    scores[thresh]['variance'][pos] = self.compute_variance(diff)
+                    scores[thresh]['zero_variance'][pos] = self.compute_zero_variance(diff)
+                    diff_image[thresh] += diff.sum(axis=0)
+                    square_diff_image[thresh] += np.square(diff).sum(axis=0)
                     batch_not_computed[i, completed] = False
 
             incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
@@ -107,8 +120,15 @@ class AdversarialRankN(AdversarialModule):
         for i in scores:
             scores[i]['dist'] = (scores[i]['dist'] / (X_max - X_min)).tolist()
             scores[i]['entropy'] = scores[i]['entropy'].tolist()
+            scores[i]['mean'] = scores[i]['mean'].tolist()
+            scores[i]['variance'] = scores[i]['variance'].tolist()
+            scores[i]['zero_variance'] = scores[i]['zero_variance'].tolist()
             scores[i]['min'] = X_min
             scores[i]['max'] = X_max
+            mean = diff_image[i] / len(X)
+            variance = square_diff_image[i] / len(X) - np.square(mean)
+            scores[i]['image_mean'] = mean.tolist()
+            scores[i]['image_variance'] = variance.tolist()
         return scores[threshs[0]] if is_float else scores
 
     def gain_function(self, y_true, y_pred):
