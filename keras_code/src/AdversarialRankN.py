@@ -1,13 +1,13 @@
 from keras import backend as K, layers
 import numpy as np
+from keras_code.src.AdversarialModule import AdversarialModule
 
 
-class AdversarialRankN:
+class AdversarialRankN(AdversarialModule):
 
-    def __init__(self, model, epsilon=5e-2):
+    def __init__(self, model):
         self.model = model
         self.adversarial_func = None
-        self.epsilon = epsilon
 
     def build(self, n):
         lp = K.learning_phase()
@@ -124,16 +124,8 @@ class AdversarialRankN:
         return scores
 
     def gain_function(self, y_true, y_pred, y_target, factor):
-        # return -1. * K.sum(y_true * K.log(1. - y_pred), axis=-1) - K.sum(K.log(1. - K.relu(K.max(y_pred, axis=-1, keepdims=True) - (1. - y_true) * y_pred)), axis=-1)
-        y_pred_clippend = K.clip(y_pred / factor, 0., 1.)
-        return -1 * K.sum(y_target * K.log(y_pred_clippend) + y_true * K.log(1. - y_pred), axis=-1)
-        # y_true_pred = K.max(y_true * y_pred, axis=-1, keepdims=True)
-        # y_target_pred = K.relu(y_true_pred - y_pred + self.epsilon)
-        # y_target_pred = self.clip(0., 1. - K.epsilon())(y_target_pred)
-        # return -1. * K.sum(y_target * K.log(1. - y_target_pred), axis=-1) # + (1. - y_true) * K.log(y_pred), axis=-1)
-
-    def compute_dist(self, X, X_adversarial):
-        return np.linalg.norm((X - X_adversarial).reshape((-1, np.prod(X.shape[1:]))), axis=1)
+        y_pred_clipped = K.clip(y_pred / factor, 0., 1.)
+        return -1 * K.sum(y_target * K.log(y_pred_clipped) + y_true * K.log(1. - y_pred), axis=-1)
 
     def get_target(self, X, y_argmax, n):
         y_pred = self.model.predict(X)
@@ -144,32 +136,3 @@ class AdversarialRankN:
             targets[i, y_target[:n]] = 1.
         return targets
 
-    @staticmethod
-    def compute_entropy(X, X_adversarial):
-        diff = np.square(X - X_adversarial).reshape((-1, np.prod(X.shape[1:])))
-        diff = np.clip(diff, 1e-8, 1. - 1e-8)
-        nfeats = diff.shape[-1]
-        diff /= diff.sum(axis=1, keepdims=True)
-        diff = diff * np.log(diff)
-        return (np.log(nfeats) - diff.sum(axis=1)) / np.log(nfeats)
-
-    @staticmethod
-    def clip(min_value, max_value):
-        @K.tf.custom_gradient
-        def clip_by_value(x):
-            # x_clip = K.clip(x - bias, -2., 2.)
-            s = K.clip(x, min_value, max_value)
-
-            def grad(dy):
-                return dy
-
-            return s, grad
-
-        return clip_by_value
-
-    @staticmethod
-    def get_alpha(alpha, y_output):
-        new_alpha = alpha * np.ones_like(y_output)
-        # new_alpha[y_output > .95] *= 2.
-        # new_alpha[y_output > .99] *= 2.
-        return new_alpha
