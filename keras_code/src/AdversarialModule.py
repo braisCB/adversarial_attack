@@ -25,7 +25,7 @@ class AdversarialModule:
         nfeats = diff.shape[-1]
         diff /= diff.sum(axis=1, keepdims=True)
         diff = diff * np.log(diff)
-        return (np.log(nfeats) - diff.sum(axis=1)) / np.log(nfeats)
+        return -1. * diff.sum(axis=1) / np.log(nfeats)
 
     @staticmethod
     def get_alpha(alpha, y_output):

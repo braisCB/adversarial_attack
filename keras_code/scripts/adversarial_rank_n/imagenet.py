@@ -26,7 +26,7 @@ def get_filenames(folder):
 
 
 if __name__ == '__main__':
-    os.chdir('../../')
+    os.chdir('../../../')
 
     graph = K.tf.get_default_graph()
 
