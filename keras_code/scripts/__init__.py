@@ -14,8 +14,8 @@ large_networks = [
     # (keras_applications.resnet_v2.ResNet101V2, keras_applications.resnet_v2.preprocess_input),
     # (keras_applications.resnet_v2.ResNet152V2, keras_applications.resnet_v2.preprocess_input),
     # (keras_applications.resnext.ResNeXt50, keras_applications.resnext.preprocess_input),
-    (keras_applications.resnext.ResNeXt101, keras_applications.resnext.preprocess_input),
-    (keras_applications.inception_resnet_v2.InceptionResNetV2, keras_applications.inception_resnet_v2.preprocess_input),
+    # (keras_applications.resnext.ResNeXt101, keras_applications.resnext.preprocess_input),
+    # (keras_applications.inception_resnet_v2.InceptionResNetV2, keras_applications.inception_resnet_v2.preprocess_input),
     (keras_applications.nasnet.NASNetLarge, keras_applications.nasnet.preprocess_input),
 ]
 

@@ -33,12 +33,13 @@ if __name__ == '__main__':
     with open(info_folder + filename) as outfile:
         info_data = json.load(outfile)
 
-    for network, preprocess in networks:
+    for network_name in info_data:
 
-        network_name = network.__name__
+        print(network_name)
+        key = list(info_data[network_name].keys())[0]
 
         min_max_info[network_name] = {
-            'min': info_data[network_name]['min'], 'max': info_data[network_name]['max']
+            'min': info_data[network_name][key]['min'], 'max': info_data[network_name][key]['max']
         }
 
     with open(info_folder + min_max_filename, 'w') as outfile:
