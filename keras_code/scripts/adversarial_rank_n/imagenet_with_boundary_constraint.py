@@ -16,7 +16,7 @@ meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'imagenet_rank_with_constraint.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 15
+batch_size = 16
 alpha = 1e-4
 Ns = [5, 1]
 optimizer = optimizers.Adam(1e-3)
@@ -78,9 +78,9 @@ if __name__ == '__main__':
 
         print('NETWORK :', network_name)
         if network_name in min_max_info:
-            print('using constraint : ', min_max_filename[network_name])
+            print('using constraint : ', min_max_info[network_name])
             constrain_func = boundary_constraint(
-                min_max_filename[network_name]['min'], min_max_filename[network_name]['max']
+                min_max_info[network_name]['min'], min_max_info[network_name]['max']
             )
         else:
             constrain_func = None

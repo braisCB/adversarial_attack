@@ -137,7 +137,7 @@ class AdversarialRankN(AdversarialModule):
         scores['zero_variance'] = scores['zero_variance'].tolist()
         scores['min'] = X_min
         scores['max'] = X_max
-        mean = (diff_image / count_finished).tolist()
+        mean = (diff_image / count_finished)
         variance = square_diff_image / count_finished - np.square(mean)
         scores['image_mean'] = mean.tolist()
         scores['image_variance'] = variance.tolist()
