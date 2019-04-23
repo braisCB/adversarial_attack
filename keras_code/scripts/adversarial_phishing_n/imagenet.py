@@ -15,10 +15,10 @@ label_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/ILSVRC2012_va
 meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'phishing_imagenet_rank.json'
 image_batch_size = 1000
-batch_size = 15
+batch_size = 32
 alpha = 1e-4
 Ns = [5, 1]
-threshs = [.5, .75, .9, .95, .99]
+threshs = [.5, .75, .9, .95]
 optimizer = optimizers.Adam(1e-3)
 
 

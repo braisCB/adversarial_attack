@@ -29,7 +29,7 @@ class AdversarialModule:
 
     @staticmethod
     def get_alpha(alpha, y_output):
-        new_alpha = alpha * np.ones_like(y_output)
+        new_alpha = alpha * np.ones(y_output.shape[0])
         # new_alpha[y_output > .95] *= 2.
         # new_alpha[y_output > .99] *= 2.
         return new_alpha

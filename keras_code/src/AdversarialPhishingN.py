@@ -9,11 +9,11 @@ class AdversarialPhishingN(AdversarialModule):
         super(AdversarialPhishingN, self).__init__(model)
         self.adversarial_func = None
 
-    def build(self, n):
+    def build(self):
         lp = K.learning_phase()
         targets = layers.Input(shape=self.model.output_shape[1:])
         gradient = K.gradients(self.gain_function(
-            self.model.targets[0], self.model.outputs[0], targets, 1./n), self.model.inputs)
+            self.model.targets[0], self.model.outputs[0], targets), self.model.inputs)
         self.adversarial_func = K.function(
             [self.model.inputs[0], self.model.targets[0], targets, lp], [gradient[0], self.model.outputs[0]]
         )
@@ -24,8 +24,8 @@ class AdversarialPhishingN(AdversarialModule):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
         scores = {}
+        self.build()
         for n in Ns:
-            self.build(n)
             scores[n] = self.get_adversarial_scores_for_targets(
                 X, y, n, threshs, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
                 beta2=beta2, epsilon=epsilon
@@ -158,8 +158,8 @@ class AdversarialPhishingN(AdversarialModule):
             scores[i]['image_variance'] = variance.tolist()
         return scores[threshs[0]] if is_float else scores
 
-    def gain_function(self, y_true, y_pred, y_target, factor):
-        y_pred_clipped = K.clip(y_pred / factor, 0., 1.)
+    def gain_function(self, y_true, y_pred, y_target):
+        y_pred_clipped = K.clip(y_pred, 0., 1.)
         return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
 
     def get_target(self, X, y_argmax, n):
