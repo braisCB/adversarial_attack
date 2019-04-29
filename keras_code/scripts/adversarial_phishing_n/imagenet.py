@@ -14,12 +14,23 @@ image_folder = '/home/brais/Descargas/ILSVRC2012_img_val/'
 label_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt'
 meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'phishing_imagenet_rank.json'
+min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 32
+batch_size = 50
 alpha = 1e-4
 Ns = [5, 1]
 threshs = [.5, .75, .9, .95]
 optimizer = optimizers.Adam(1e-3)
+
+
+def boundary_constraint(minval, maxval):
+
+    def func(x):
+        x[x < minval] = minval
+        x[x > maxval] = maxval
+        return x
+
+    return func
 
 
 def get_filenames(folder):
@@ -46,6 +57,9 @@ if __name__ == '__main__':
     image_labels = np.loadtxt(label_filename, dtype=int)
     image_labels = np.array([conversion[x] for x in image_labels])
 
+    with open(info_folder + min_max_filename) as outfile:
+        min_max_info = json.load(outfile)
+
     for network, preprocess in networks:
 
         model = network(include_top=True, weights='imagenet')
@@ -63,11 +77,18 @@ if __name__ == '__main__':
 
         network_name = network.__name__
         print('NETWORK :', network_name)
+        if network_name in min_max_info:
+            print('using constraint : ', min_max_info[network_name])
+            constrain_func = boundary_constraint(
+                min_max_info[network_name]['min'], min_max_info[network_name]['max']
+            )
+        else:
+            constrain_func = None
 
         with graph.as_default():
             adversarial_rank = AdversarialPhishingN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, threshs=threshs, Ns=Ns, batch_size=batch_size, alpha=alpha
+                image_generator, y, threshs=threshs, Ns=Ns, batch_size=batch_size, alpha=alpha, constraint=constrain_func
             )
 
         if not os.path.isdir(info_folder):

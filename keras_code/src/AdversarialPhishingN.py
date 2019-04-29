@@ -33,7 +33,7 @@ class AdversarialPhishingN(AdversarialModule):
         return scores
 
     def get_adversarial_scores_for_targets(
-            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8
     ):
 
         count_finished = 0
