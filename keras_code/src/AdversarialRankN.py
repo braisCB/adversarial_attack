@@ -1,6 +1,6 @@
-from keras import backend as K, layers
-import numpy as np
 from keras_code.src.AdversarialModule import AdversarialModule
+from tensorflow.keras import backend as K, layers
+import numpy as np
 
 
 class AdversarialRankN(AdversarialModule):
@@ -19,7 +19,7 @@ class AdversarialRankN(AdversarialModule):
         )
 
     def get_adversarial_scores(
-            self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+            self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
@@ -33,7 +33,7 @@ class AdversarialRankN(AdversarialModule):
         return scores
 
     def get_adversarial_scores_for_targets(
-            self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+            self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8
     ):
 
         diff_image = np.zeros(self.model.input_shape[1:])
@@ -73,9 +73,12 @@ class AdversarialRankN(AdversarialModule):
             iters += 1.
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
+            # active_targets = self.get_target(
+            #     None, y_argmax[active_indexes], n, output
+            # )
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
-            y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
+            y_thresh = np.min(output + 1. - active_targets, axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
             if len(completed) > 0:
                 pos = active_indexes[completed]
@@ -145,14 +148,14 @@ class AdversarialRankN(AdversarialModule):
 
     def gain_function(self, y_true, y_pred, y_target, factor):
         y_pred_clipped = K.clip(y_pred / factor, 0., 1.)
-        return -1 * K.sum(y_target * K.log(y_pred_clipped) + y_true * K.log(1. - y_pred), axis=-1)
+        return -1. * K.sum(y_target * K.log(y_pred_clipped) + y_true * K.log(1. - y_pred), axis=-1)
 
-    def get_target(self, X, y_argmax, n):
-        y_pred = self.model.predict(X)
+    def get_target(self, X, y_argmax, n, y_pred=None):
+        if y_pred is None:
+            y_pred = self.model.predict(X)
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
         y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_argmax.shape[0], -1))
         targets = np.zeros_like(y_pred)
         for i, y_target in enumerate(y_targets):
             targets[i, y_target[:n]] = 1.
         return targets
-

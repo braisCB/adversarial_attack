@@ -6,16 +6,18 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import LearningRateScheduler
 from keras_code.src.AdversarialRankN import AdversarialRankN
 from keras_code.src.AdversarialPhishingN import AdversarialPhishingN
+import json
 
 
 shape = (32, 32, 3)
 nclasses = 10
 filename = 'naive_models.json'
-directory = './keras_code/scripts/ablation/info/'
+info_folder = './keras_code/scripts/ablation/info/'
 batch_size = 128
 epochs = 100
-rank_N = [1, 3]
+Ns = [3, 1]
 alpha = 1e-4
+threshs = [.5, .75, .9, .95]
 
 generator = ImageDataGenerator(
     width_shift_range=5. / 32,
@@ -68,13 +70,13 @@ if __name__ == '__main__':
     y_test = to_categorical(y_test, nclasses)
 
 
-    for naive_model in [naive_inception, naive_densenet, naive_resnet]:
+    for naive_model in [naive_resnet.NaiveResNet, naive_inception.NaiveInception, naive_densenet.NaiveDenseNet]:
 
         for global_average_pooling in [False, True]:
             name = naive_model.__name__ + '_gap_' + str(global_average_pooling)
             print('model : ', name)
 
-            model = naive_model.naive_model(shape=shape, nclasses=nclasses, gap=global_average_pooling)
+            model = naive_model(shape=shape, nclasses=nclasses, gap=global_average_pooling).model
             model.summary()
 
             model.fit_generator(
@@ -88,8 +90,30 @@ if __name__ == '__main__':
 
             adversarial_rank = AdversarialRankN(model=model)
             rank_scores = adversarial_rank.get_adversarial_scores(
-                x_test, y_test, Ns=rank_N, batch_size=batch_size, alpha=alpha, constraint=boundary_constraint(-1., 1.)
+                x_test, y_test, Ns=Ns, batch_size=batch_size, alpha=alpha, constraint=boundary_constraint(-1., 1.)
             )
+
+            adversarial_phishing = AdversarialPhishingN(model=model)
+            phishing_scores = adversarial_phishing.get_adversarial_scores(
+                x_test, y_test, threshs=threshs, Ns=Ns, batch_size=batch_size, alpha=alpha,
+                constraint=boundary_constraint(-1., 1.)
+            )
+
+            if not os.path.isdir(info_folder):
+                os.makedirs(info_folder)
+
+            try:
+                with open(info_folder + filename) as outfile:
+                    info_data = json.load(outfile)
+            except:
+                info_data = {}
+
+            info_data[name] = {
+                'DoS': rank_scores, 'phishing': phishing_scores
+            }
+
+            with open(info_folder + filename, 'w') as outfile:
+                json.dump(info_data, outfile)
 
 
 
