@@ -16,9 +16,9 @@ meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
 filename = 'phishing_imagenet_rank.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 50
+batch_size = 22
 alpha = 1e-4
-Ns = [5, 1]
+Ns = [1]
 threshs = [.5, .75, .9, .95]
 optimizer = optimizers.Adam(1e-3)
 
@@ -39,6 +39,13 @@ def get_filenames(folder):
 
 if __name__ == '__main__':
     os.chdir('../../../')
+
+    try:
+        with open(info_folder + filename) as outfile:
+            info_data = json.load(outfile)
+            print(list(info_data.keys()))
+    except:
+        pass
 
     graph = K.tf.get_default_graph()
 

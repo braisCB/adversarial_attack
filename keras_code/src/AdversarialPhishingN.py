@@ -167,6 +167,6 @@ class AdversarialPhishingN(AdversarialModule):
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
         y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_argmax.shape[0], -1))
         targets = np.zeros_like(y_pred)
-        targets[range(len(targets)), y_targets[:, n]] = 1.
+        targets[range(len(targets)), y_targets[:, n-1]] = 1.
         return targets
 
