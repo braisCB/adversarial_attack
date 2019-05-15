@@ -7,13 +7,14 @@ class AdversarialModule:
         self.model = model
 
     def compute_dist(self, diff):
-        return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        return np.mean(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        # return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_mean(self, diff):
-        return np.mean(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        return np.mean(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_variance(self, diff):
-        return np.var(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        return np.var(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_zero_variance(self, diff):
         return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
