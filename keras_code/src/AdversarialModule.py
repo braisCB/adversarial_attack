@@ -28,8 +28,11 @@ class AdversarialModule:
         return -1. * diff.sum(axis=1) / np.log(nfeats)
 
     @staticmethod
-    def get_alpha(alpha, y_output):
-        new_alpha = alpha * np.ones(y_output.shape[0])
-        # new_alpha[y_output > .95] *= 2.
+    def get_alpha(alpha, iters):
+        new_alpha = alpha * np.ones(iters.shape[0])
+        new_alpha[iters > 1500] *= 5.
+        new_alpha[iters > 1000] *= 5.
+        # new_alpha[iters > 500] *= 5.
+        # new_alpha[iters > 200] *= 5.
         # new_alpha[y_output > .99] *= 2.
         return new_alpha

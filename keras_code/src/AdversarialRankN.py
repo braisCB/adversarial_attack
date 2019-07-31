@@ -97,7 +97,7 @@ class AdversarialRankN(AdversarialModule):
             v_dX_c = v_dX[incompleted] # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
             s_dX_c = s_dX[incompleted] # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
 
-            X_adversarial[incompleted] -= self.get_alpha(alpha, y_output[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
