@@ -10,6 +10,7 @@ from keras.callbacks import LearningRateScheduler
 import os
 import json
 from keras.utils import to_categorical
+from keras.datasets import cifar10
 
 
 finetuning = False

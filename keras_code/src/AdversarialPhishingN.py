@@ -36,8 +36,6 @@ class AdversarialPhishingN(AdversarialModule):
             self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8
     ):
 
-        count_finished = 0
-
         is_float = isinstance(threshs, float)
         threshs = np.asarray([threshs]) if is_float else threshs
         scores = {

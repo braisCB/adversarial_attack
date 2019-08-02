@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-filename = './info/imagenet_rank_with_constraint.json'
+filename = './info/phishing_imagenet_rank.json'
 
 
 def getsize(network_name):
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     amsd_results = {}
     ame_results = {}
     for network in info_data:
-        network_dict = info_data[network]
+        network_dict = info_data[network]['1']
         network_names.append(network)
         for n in network_dict:
             print('NETWORK : ', network)
@@ -39,30 +39,32 @@ if __name__ == '__main__':
             print('MSD_{DoS}^k :', amsd_results[n][-1])
             if n not in ame_results:
                 ame_results[n] = []
-            ame_results[n].append(np.mean(network_dict[n]['entropy']) - 1)
+            ame_results[n].append(np.mean(network_dict[n]['entropy']))
             print('ADE_{DoS}^k :', ame_results[n][-1])
             print('')
 
-    index = np.argsort(amsd_results['5'])
+    index = np.argsort(amsd_results['0.95'])
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ind = np.arange(len(network_names))
-    width = 0.4
+    width = 0.3
 
-    zvals = np.array(amsd_results['1'])[index]
+    zvals = np.array(amsd_results['0.5'])[index]
     rects2 = ax.barh(ind, zvals, width, color='g')
-    kvals = np.array(amsd_results['5'])[index]
+    kvals = np.array(amsd_results['0.75'])[index]
     rects3 = ax.barh(ind + width, kvals, width, color='b')
+    zvals = np.array(amsd_results['0.95'])[index]
+    rects4 = ax.barh(ind + 2*width, zvals, width, color='m')
 
-    ax.set_title('ImageNet DoS Results')
-    ax.set_xlabel('$AMSD_{DoS}^2$')
-    ax.set_yticks(ind + 0.5*width)
+    ax.set_title('ImageNet Phishing Results')
+    ax.set_xlabel('$AMSD_{Ph}^2$')
+    ax.set_yticks(ind + width)
     ax.set_yticklabels(np.array(network_names)[index])
-    ax.legend((rects2[0], rects3[0]), ('N = 1', 'N = 5'))
+    ax.legend((rects2[0], rects3[0], rects4[0]), ('$p_{th} = 0.5$', '$p_{th} = 0.75$', '$p_{th} = 0.95$'))
 
     plt.tight_layout()
-    plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
 
     def autolabel(rects):
         for rect in rects:
@@ -73,23 +75,25 @@ if __name__ == '__main__':
     # autolabel(rects2)
     # autolabel(rects3)
 
-    index = np.argsort(ame_results['5'])[::-1]
+    index = np.argsort(ame_results['0.95'])[::-1]
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ind = np.arange(len(network_names))
-    width = 0.4
+    width = 0.3
 
-    zvals = np.array(ame_results['1'])[index]
+    zvals = np.array(ame_results['0.5'])[index]
     rects2 = ax.barh(ind, zvals, width, color='g')
-    kvals = np.array(ame_results['5'])[index]
+    kvals = np.array(ame_results['0.75'])[index]
     rects3 = ax.barh(ind + width, kvals, width, color='b')
+    zvals = np.array(ame_results['0.95'])[index]
+    rects4 = ax.barh(ind + 2*width, zvals, width, color='m')
 
-    ax.set_title('ImageNet DoS Results')
-    ax.set_xlabel('$AMUD_{DoS}$')
+    ax.set_title('ImageNet Phishing Results')
+    ax.set_xlabel('$AMUD_{Ph}$')
     ax.set_xlim(.95, 1.)
-    ax.set_yticks(ind + 0.5 * width)
+    ax.set_yticks(ind + width)
     ax.set_yticklabels(np.array(network_names)[index])
-    ax.legend((rects2[0], rects3[0]), ('N = 1', 'N = 5'))
+    ax.legend((rects2[0], rects3[0], rects4[0]), ('$p_{th} = 0.5$', '$p_{th} = 0.75$', '$p_{th} = 0.95$'))
 
     plt.tight_layout()
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))

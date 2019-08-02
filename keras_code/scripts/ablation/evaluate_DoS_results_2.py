@@ -2,10 +2,12 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-from scipy.stats import friedmanchisquare, wilcoxon, kruskal, f_oneway
+from scipy.stats import friedmanchisquare, wilcoxon, kruskal
 
 
-filename = './info/cifar_100_naive_models_fgsm.pickle'
+filename = './info/cifar_10_naive_models_without_noise.json'
+filename_2 = './info/cifar_10_naive_models_with_noise_01.json'
+filename_3 = './info/cifar_10_naive_models_fgsm.pickle'
 tipo = 'DoS'
 
 
@@ -18,11 +20,23 @@ if __name__ == '__main__':
         with open(filename, 'rb') as outfile:
             info_data = pickle.load(outfile)
 
+    try:
+        with open(filename_2) as outfile:
+            info_data_2 = json.load(outfile)
+    except:
+        with open(filename_2, 'rb') as outfile:
+            info_data_2 = pickle.load(outfile)
+
+    try:
+        with open(filename_3) as outfile:
+            info_data_3 = json.load(outfile)
+    except:
+        with open(filename_3, 'rb') as outfile:
+            info_data_3 = pickle.load(outfile)
+
     network_names = []
     amsd_results = {}
     ame_results = {}
-    t_dist = {}
-    t_entropy = {}
     for network in info_data:
         network_dict = info_data[network][tipo]
         network_names.append(network)
@@ -32,50 +46,46 @@ if __name__ == '__main__':
             print('N : ', n)
             if n not in amsd_results:
                 amsd_results[n] = []
-                t_dist[n] = []
-                t_entropy[n] = []
             # network_dict[n]['dist'] = np.asarray(network_dict[n]['dist'])
             # network_dict[n]['dist'] = network_dict[n]['dist'][network_dict[n]['dist'] > 0]
             # network_dict[n]['entropy'] = np.asarray(network_dict[n]['entropy'])
             # network_dict[n]['entropy'] = network_dict[n]['entropy'][network_dict[n]['entropy'] > 0]
-            network_dict[n]['dist'] = np.array(network_dict[n]['dist']) / np.sqrt(32*32)
+            network_dict[n]['dist'] = np.array(network_dict[n]['dist']) / (32*32)
             # network_dict[n]['dist'] = network_dict[n]['dist'][network_dict[n]['dist'] > 0]
             network_dict[n]['entropy'] = np.array(network_dict[n]['entropy'])
             amsd_results[n].append(np.mean(network_dict[n]['dist']))
-            t_dist[n].append(network_dict[n]['dist'])
-            t_entropy[n].append(network_dict[n]['entropy'])
+            v1 = np.array(info_data[network][tipo][n]['dist'])
+            v2 = np.array(info_data_2[network][tipo][n]['dist'])
+            v3 = np.array(info_data_3[network][tipo][int(n)]['dist'])
+            data = np.concatenate((v1[None,:], v2[None,:], v3[None,:]))
+            data = np.argsort(data, axis=0)
+            h, pk = kruskal(data[0], data[2])
+            print('KRUSKAL : ', pk, h)
+            print('MEAN AMSD : ', data.mean(axis=1))
+            _, p = friedmanchisquare(v1, v2, v3)
+            _, p_12 = wilcoxon(v1, v2)
+            _, p_13 = wilcoxon(v1, v3)
+            _, p_23 = wilcoxon(v3, v2)
+            print('FRIEDMAN AMSD :', p, p_12, p_13, p_23)
+            v1 = np.array(info_data[network][tipo][n]['entropy'])
+            v2 = np.array(info_data_2[network][tipo][n]['entropy'])
+            v3 = np.array(info_data_3[network][tipo][int(n)]['entropy'])
+            _, p = friedmanchisquare(v1, v2, v3)
+            _, p_12 = wilcoxon(v1, v2)
+            _, p_13 = wilcoxon(v1, v3)
+            _, p_23 = wilcoxon(v3, v2)
+            data = np.concatenate((v1[None,:], v2[None,:], v3[None,:]))
+            h, pk = kruskal(data[0], data[2])
+            print('KRUSKAL : ', pk, h)
+            print('MEAN AMUD : ', np.argsort(data, axis=0).mean(axis=1))
+
+            print('FRIEDMAN AMUD :', p, p_12, p_13, p_23)
             print('AMSD :', amsd_results[n][-1], '+-', np.std(network_dict[n]['dist']))
             if n not in ame_results:
                 ame_results[n] = []
             ame_results[n].append(np.mean(network_dict[n]['entropy']))
             print('AMUD :', ame_results[n][-1], '+-', np.std(network_dict[n]['entropy']))
             print('')
-
-    for n in ['1', '3']:
-        print('Nd:', n)
-        _, p = friedmanchisquare(t_dist[n][0], t_dist[n][1], t_dist[n][2])
-        data = np.array(t_dist[n])
-        # data = np.argsort(data, axis=0)
-        _, pk = f_oneway(data[0], data[2])
-        print('ANOVA AMSD :', pk)
-        _, p_12 = wilcoxon(t_dist[n][0], t_dist[n][3], zero_method="pratt")
-        _, p_13 = wilcoxon(t_dist[n][1], t_dist[n][4], zero_method="pratt")
-        _, p_23 = wilcoxon(t_dist[n][2], t_dist[n][5], zero_method="pratt")
-        print('FRIEDMAN AMSD :', p, p_12, p_13, p_23)
-        print('MEAN AMSD : ', np.mean(data, axis=1), np.std(data, axis=1))
-        print('MEAN AMSD : ', np.argsort(data[:2], axis=0).mean(axis=1))
-        print('MEAN AMSD : ', np.argsort(data[1:], axis=0).mean(axis=1))
-        _, p = friedmanchisquare(t_entropy[n][0], t_entropy[n][1], t_entropy[n][2])
-        data = np.array(t_entropy[n])
-        # data = np.argsort(data, axis=0)
-        _, pk = f_oneway(data[0], data[2])
-        print('KRUSKAL AMSD :', pk)
-        _, p_12 = wilcoxon(t_entropy[n][0], t_entropy[n][1], zero_method="pratt")
-        _, p_13 = wilcoxon(t_entropy[n][0], t_entropy[n][2], zero_method="pratt")
-        _, p_23 = wilcoxon(t_entropy[n][2], t_entropy[n][1], zero_method="pratt")
-        print('FRIEDMAN AMUD :', p, p_12, p_13, p_23)
-        print('MEAN AMUD : ', np.mean(data, axis=1), np.std(data, axis=1))
-
 
     keys = list(sorted(amsd_results.keys()))
     index = np.argsort(amsd_results[keys[-1]])

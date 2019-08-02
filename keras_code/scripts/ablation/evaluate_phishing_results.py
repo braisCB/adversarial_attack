@@ -1,17 +1,22 @@
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 
 
-filename = './info/mnist_naive_models_with_noise_01.json'
+filename = './info/cifar_10_naive_models_with_noise_01.json'
 tipo = 'phishing'
 thresh = '0.95'
 
 
 if __name__ == '__main__':
 
-    with open(filename) as outfile:
-        info_data = json.load(outfile)
+    try:
+        with open(filename) as outfile:
+            info_data = json.load(outfile)
+    except:
+        with open(filename, 'rb') as outfile:
+            info_data = pickle.load(outfile)
 
     network_names = []
     amsd_results = {}
@@ -24,16 +29,16 @@ if __name__ == '__main__':
             print('N : ', n)
             if n not in amsd_results:
                 amsd_results[n] = []
-            # network_dict[n]['dist'] = np.asarray(network_dict[n]['dist'])
+            network_dict[n][thresh]['dist'] = np.asarray(network_dict[n][thresh]['dist']) / np.sqrt(32*32)
             # network_dict[n]['dist'] = network_dict[n]['dist'][network_dict[n]['dist'] > 0]
-            # network_dict[n]['entropy'] = np.asarray(network_dict[n]['entropy'])
-            # network_dict[n]['entropy'] = network_dict[n]['entropy'][network_dict[n]['entropy'] > 0]
+            network_dict[n][thresh]['entropy'] = np.asarray(network_dict[n][thresh]['entropy'])
+            # network_dict[n][thresh]['entropy'] = network_dict[n][thresh]['entropy'][network_dict[n][thresh]['entropy'] < 1]
             amsd_results[n].append(np.mean(network_dict[n][thresh]['dist']))
-            print('AMSD :', amsd_results[n][-1])
+            print('AMSD :', amsd_results[n][-1], '+-', np.std(network_dict[n][thresh]['dist']))
             if n not in ame_results:
                 ame_results[n] = []
             ame_results[n].append(np.mean(network_dict[n][thresh]['entropy']))
-            print('AME :', ame_results[n][-1])
+            print('AME :', ame_results[n][-1], '+-', np.std(network_dict[n][thresh]['entropy']))
             print('')
 
     keys = list(sorted(amsd_results.keys()))

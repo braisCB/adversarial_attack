@@ -6,6 +6,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import LearningRateScheduler
 from keras_code.src.AdversarialRankN import AdversarialRankN
 from keras_code.src.AdversarialPhishingN import AdversarialPhishingN
+from keras.utils.vis_utils import plot_model
 import json
 
 
@@ -72,12 +73,15 @@ if __name__ == '__main__':
 
     for naive_model in [naive_resnet.NaiveResNet, naive_inception.NaiveInception, naive_densenet.NaiveDenseNet]:
 
-        for global_average_pooling in [False, True]:
+        for global_average_pooling in [False]:
             name = naive_model.__name__ + '_gap_' + str(global_average_pooling)
             print('model : ', name)
 
             model = naive_model(shape=shape, nclasses=nclasses, gap=global_average_pooling).model
             model.summary()
+
+            plot_model(model, to_file=name + '.png', show_shapes=True, show_layer_names=True)
+            continue
 
             model.fit_generator(
                 generator.flow(x_train, y_train, batch_size=batch_size),
