@@ -19,7 +19,8 @@ class AdversarialPhishingN(AdversarialModule):
         )
 
     def get_adversarial_scores(
-            self, X, y, Ns, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8
+            self, X, y, Ns, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8,
+            l2=1., l1=0., extra_epochs=200
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
@@ -28,7 +29,7 @@ class AdversarialPhishingN(AdversarialModule):
         for n in Ns:
             scores[n] = self.get_adversarial_scores_for_targets(
                 X, y, n, threshs, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                beta2=beta2, epsilon=epsilon
+                beta2=beta2, epsilon=epsilon, l2=l2, l1=l1, extra_epochs=extra_epochs
             )
         return scores
 
@@ -87,7 +88,8 @@ class AdversarialPhishingN(AdversarialModule):
             if l1 > 0.:
                 gradient += l1 * np.sign(X_adversarial - X_active)
 
-            y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
+            # y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
+            y_thresh = np.max(output * active_targets, axis=-1)
 
             for i, thresh in enumerate(threshs):
                 # pos_output = (rank_output == n).argmax(axis=-1)
@@ -115,10 +117,11 @@ class AdversarialPhishingN(AdversarialModule):
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
             s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
 
-            v_dX_c = v_dX[incompleted] # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
-            s_dX_c = s_dX[incompleted] # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
+            v_dX_c = v_dX[incompleted]  # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
+            s_dX_c = s_dX[incompleted]  # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
 
             X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -142,7 +145,7 @@ class AdversarialPhishingN(AdversarialModule):
                         (batch_not_computed, np.ones((len(threshs), nslots), dtype=bool)), axis=1
                     )
                     v_dX = np.concatenate(
-                        (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=0
+                        (v_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
                     s_dX = np.concatenate(
                         (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
@@ -154,10 +157,11 @@ class AdversarialPhishingN(AdversarialModule):
                     X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
                     X_min = min(X_min, X_active.min())
                     X_max = max(X_max, X_active.max())
-                    X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
+                    X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             if cont % 100 == 0:
-                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_thresh.max(), ' Min_thresh : ', y_thresh.min())
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes),
+                      ', Max iter : ', iters.max(), ' Max_output : ', y_thresh.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
         for i in scores:
             scores[i]['amsd'] = (scores[i]['amsd'] / (X_max - X_min)).tolist()
@@ -177,11 +181,11 @@ class AdversarialPhishingN(AdversarialModule):
         y_pred_clipped = K.clip(y_pred, 0., 1.)
         return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
 
-    def get_target(self, X, y_argmax, n):
-        y_pred = self.model.predict(X)
+    def get_target(self, X, y_argmax, n, y_pred=None):
+        if y_pred is None:
+            y_pred = self.model.predict(X)
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
-        y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_argmax.shape[0], -1))
+        y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_pred_argsort.shape[0], -1))
         targets = np.zeros_like(y_pred)
-        targets[range(len(targets)), y_targets[:, n-1]] = 1.
+        targets[range(len(targets)), y_targets[:, n - 1]] = 1.
         return targets
-

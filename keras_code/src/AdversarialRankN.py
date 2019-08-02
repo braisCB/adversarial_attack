@@ -1,6 +1,6 @@
-from keras import backend as K, layers
-import numpy as np
 from keras_code.src.AdversarialModule import AdversarialModule
+from tensorflow.keras import backend as K, layers
+import numpy as np
 
 
 class AdversarialRankN(AdversarialModule):
@@ -76,9 +76,12 @@ class AdversarialRankN(AdversarialModule):
             iters += 1.
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
+            # active_targets = self.get_target(
+            #     None, y_argmax[active_indexes], n, output
+            # )
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
-            y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
+            y_thresh = np.min(output + 1. - active_targets, axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
             extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
             if len(extras) > 0:
@@ -166,12 +169,12 @@ class AdversarialRankN(AdversarialModule):
         y_pred_clipped = K.clip(y_pred * (factor - epsilon), 0., 1.)
         return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
 
-    def get_target(self, X, y_argmax, n):
-        y_pred = self.model.predict(X)
+    def get_target(self, X, y_argmax, n, y_pred=None):
+        if y_pred is None:
+            y_pred = self.model.predict(X)
         y_pred_argsort = np.argsort(-1. * y_pred, axis=-1)
         y_targets = y_pred_argsort[y_pred_argsort != y_argmax.reshape((-1, 1))].reshape((y_argmax.shape[0], -1))
         targets = np.zeros_like(y_pred)
         for i, y_target in enumerate(y_targets):
             targets[i, y_target[:n]] = 1.
         return targets
-
