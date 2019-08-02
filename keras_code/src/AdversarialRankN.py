@@ -1,5 +1,5 @@
 from keras_code.src.AdversarialModule import AdversarialModule
-from tensorflow.keras import backend as K, layers
+from keras import backend as K, layers
 import numpy as np
 
 
@@ -20,7 +20,7 @@ class AdversarialRankN(AdversarialModule):
 
     def get_adversarial_scores(
             self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1., l1=0., extra_epochs=200
+            l2=1e-3, l1=0., extra_epochs=200
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
