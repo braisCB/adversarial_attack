@@ -13,12 +13,12 @@ from scipy.io import loadmat
 image_folder = '/home/brais/Descargas/ILSVRC2012_img_val/'
 label_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt'
 meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
-filename = 'imagenet_rank.json'
+filename = 'imagenet_rank_with_l2.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 16
+batch_size = 40
 alpha = 1e-4
-Ns = [5, 1]
+Ns = [1]
 optimizer = optimizers.Adam(1e-3)
 
 
