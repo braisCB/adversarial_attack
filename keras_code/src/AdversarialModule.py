@@ -6,17 +6,21 @@ class AdversarialModule:
     def __init__(self, model):
         self.model = model
 
-    def compute_amsd(self, diff):
-        return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+    def compute_l2(self, diff):
+        return np.linalg.norm(diff, ord=2, axis=1)
+        # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
-    def compute_mean(self, diff):
-        return np.mean(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+    def compute_l1(self, diff):
+        return np.linalg.norm(diff, ord=1, axis=1)
+        # return np.mean(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
-    def compute_variance(self, diff):
-        return np.max(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+    def compute_l_inf(self, diff):
+        return np.linalg.norm(diff, ord=np.inf, axis=1)
+        # return np.max(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
-    def compute_zero_variance(self, diff):
-        return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+    def compute_l0(self, diff):
+        return np.linalg.norm(diff, ord=0, axis=1)
+        # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     @staticmethod
     def compute_amud(diff):

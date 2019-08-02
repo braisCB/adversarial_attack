@@ -42,8 +42,8 @@ class AdversarialRankN(AdversarialModule):
         square_diff_image = np.zeros(self.model.input_shape[1:])
         count_finished = 0
         scores = {
-            'amsd': np.Inf * np.ones(len(X)), 'amud': np.zeros(len(X)),
-            'mean': np.zeros(len(X)), 'variance': np.zeros(len(X)), 'zero_variance': np.zeros(len(X))
+            'L2': np.Inf * np.ones(len(X)), 'amud': np.zeros(len(X)),
+            'L1': np.zeros(len(X)), 'L_inf': np.zeros(len(X)), 'L_0': np.zeros(len(X))
         }
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
@@ -93,16 +93,16 @@ class AdversarialRankN(AdversarialModule):
             if len(completed) > 0:
                 pos = active_indexes[completed]
                 diff = X_adversarial[completed] - X_active[completed]
-                amsd = self.compute_amsd(diff)
-                new_winner = np.where(amsd < scores['amsd'][pos])[0]
+                amsd = self.compute_l2(diff)
+                new_winner = np.where(amsd < scores['L2'][pos])[0]
                 if len(new_winner) > 0:
                     diff = diff[new_winner]
                     pos = pos[new_winner]
-                    scores['amsd'][pos] = amsd[new_winner]
+                    scores['L2'][pos] = amsd[new_winner]
                     scores['amud'][pos] = self.compute_amud(diff)
-                    scores['mean'][pos] = self.compute_mean(diff)
-                    scores['variance'][pos] = self.compute_variance(diff)
-                    scores['zero_variance'][pos] = self.compute_zero_variance(diff)
+                    scores['L1'][pos] = self.compute_l1(diff)
+                    scores['L_inf'][pos] = self.compute_l_inf(diff)
+                    scores['L_0'][pos] = self.compute_l0(diff)
                 diff_image += np.sum(diff, axis=0)
                 square_diff_image += np.sum(np.square(diff), axis=0)
                 count_finished += len(completed)
@@ -150,18 +150,21 @@ class AdversarialRankN(AdversarialModule):
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ', Max extra : ', extra_iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
-        scores['amsd'] = (scores['amsd'] / (X_max - X_min)).tolist()
+        scores['L2'] = (scores['L2'] / (X_max - X_min)).tolist()
         scores['amud'] = scores['amud'].tolist()
-        scores['mean'] = scores['mean'].tolist()
-        scores['variance'] = scores['variance'].tolist()
-        scores['zero_variance'] = scores['zero_variance'].tolist()
+        scores['L1'] = scores['L1'].tolist()
+        scores['L_inf'] = scores['L_inf'].tolist()
+        scores['L_0'] = scores['L_0'].tolist()
         scores['min'] = X_min
         scores['max'] = X_max
         mean = (diff_image / count_finished)
         variance = square_diff_image / count_finished - np.square(mean)
         scores['image_mean'] = mean.tolist()
         scores['image_variance'] = variance.tolist()
-        print('AMSD: ', np.mean(scores['amsd']))
+        print('L2: ', np.mean(scores['L2']))
+        print('L1: ', np.mean(scores['L1']))
+        print('L0: ', np.mean(scores['L0']))
+        print('L_inf: ', np.mean(scores['L_inf']))
         print('AMUD: ', np.mean(scores['amud']))
         return scores
 

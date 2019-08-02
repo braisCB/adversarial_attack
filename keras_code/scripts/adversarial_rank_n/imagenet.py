@@ -18,7 +18,7 @@ min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
 batch_size = 40
 alpha = 1e-4
-Ns = [1]
+Ns = [5, 1]
 optimizer = optimizers.Adam(1e-3)
 
 
