@@ -33,16 +33,15 @@ class AdversarialPhishingN(AdversarialModule):
         return scores
 
     def get_adversarial_scores_for_targets(
-            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0., beta2=0., epsilon=1e-8
+            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
+            l2=1., l1=0., extra_epochs=200
     ):
-
-        count_finished = 0
 
         is_float = isinstance(threshs, float)
         threshs = np.asarray([threshs]) if is_float else threshs
         scores = {
             thresh: {
-                'dist': np.zeros(len(X)), 'entropy': np.zeros(len(X)),
+                'amsd': np.Inf * np.ones(len(X)), 'amud': np.zeros(len(X)),
                 'mean': np.zeros(len(X)), 'variance': np.zeros(len(X)), 'zero_variance': np.zeros(len(X))
             } for thresh in threshs
         }
@@ -66,6 +65,7 @@ class AdversarialPhishingN(AdversarialModule):
         s_dX = np.zeros_like(X_adversarial)
 
         iters = np.zeros(batch_size)
+        extra_iters = np.zeros((len(threshs), batch_size), dtype=bool)
 
         ndims = [1] * X_active.ndim
         ndims[0] = -1
@@ -82,21 +82,32 @@ class AdversarialPhishingN(AdversarialModule):
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
 
+            if l2 > 0.:
+                gradient += l2 * (X_adversarial - X_active)
+            if l1 > 0.:
+                gradient += l1 * np.sign(X_adversarial - X_active)
+
             y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
 
             for i, thresh in enumerate(threshs):
                 # pos_output = (rank_output == n).argmax(axis=-1)
                 completed = np.where((y_thresh >= thresh) & batch_not_computed[i])[0]
+                extras = np.where(((y_thresh >= thresh) & batch_not_computed[i]) | (extra_iters[i] > 0))[0]
+                extra_iters[i, extras] += 1
                 if len(completed):
                     pos = active_indexes[completed]
                     diff = X_adversarial[completed] - X_active[completed]
-                    scores[thresh]['dist'][pos] = self.compute_dist(diff)
-                    scores[thresh]['entropy'][pos] = self.compute_entropy(diff)
-                    scores[thresh]['mean'][pos] = self.compute_mean(diff)
-                    scores[thresh]['variance'][pos] = self.compute_variance(diff)
-                    scores[thresh]['zero_variance'][pos] = self.compute_zero_variance(diff)
+                    amsd = self.compute_amsd(diff)
+                    if amsd < scores[thresh]['amsd'][pos]:
+                        scores[thresh]['amsd'][pos] = amsd
+                        scores[thresh]['amud'][pos] = self.compute_amud(diff)
+                        scores[thresh]['mean'][pos] = self.compute_mean(diff)
+                        scores[thresh]['variance'][pos] = self.compute_variance(diff)
+                        scores[thresh]['zero_variance'][pos] = self.compute_zero_variance(diff)
                     diff_image[thresh] += diff.sum(axis=0)
                     square_diff_image[thresh] += np.square(diff).sum(axis=0)
+                completed = np.where(extra_iters > extra_epochs)[0]
+                if len(completed):
                     batch_not_computed[i, completed] = False
 
             incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
@@ -120,6 +131,7 @@ class AdversarialPhishingN(AdversarialModule):
                 v_dX = v_dX[incompleted]
                 s_dX = s_dX[incompleted]
                 iters = iters[incompleted]
+                extra_iters = extra_iters[:, incompleted]
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
@@ -135,6 +147,9 @@ class AdversarialPhishingN(AdversarialModule):
                     s_dX = np.concatenate(
                         (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
+                    extra_iters = np.concatenate(
+                        (extra_iters, np.zeros((len(threshs), nslots), dtype=bool)), axis=1
+                    )
                     iters = np.concatenate((iters, np.zeros(nslots)))
                     X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
                     X_min = min(X_min, X_active.min())
@@ -145,8 +160,8 @@ class AdversarialPhishingN(AdversarialModule):
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ' Max_output : ', y_thresh.max(), ' Min_thresh : ', y_thresh.min())
             cont += 1
         for i in scores:
-            scores[i]['dist'] = (scores[i]['dist'] / (X_max - X_min)).tolist()
-            scores[i]['entropy'] = scores[i]['entropy'].tolist()
+            scores[i]['amsd'] = (scores[i]['amsd'] / (X_max - X_min)).tolist()
+            scores[i]['amud'] = scores[i]['amud'].tolist()
             scores[i]['mean'] = scores[i]['mean'].tolist()
             scores[i]['variance'] = scores[i]['variance'].tolist()
             scores[i]['zero_variance'] = scores[i]['zero_variance'].tolist()

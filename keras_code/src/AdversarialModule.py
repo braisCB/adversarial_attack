@@ -6,20 +6,20 @@ class AdversarialModule:
     def __init__(self, model):
         self.model = model
 
-    def compute_dist(self, diff):
-        return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+    def compute_amsd(self, diff):
+        return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_mean(self, diff):
-        return np.mean(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        return np.mean(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_variance(self, diff):
-        return np.var(diff.reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+        return np.max(np.abs(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     def compute_zero_variance(self, diff):
         return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
     @staticmethod
-    def compute_entropy(diff):
+    def compute_amud(diff):
         diff = np.square(diff).reshape((-1, np.prod(diff.shape[1:])))
         diff = np.clip(diff, 1e-8, 1. - 1e-8)
         nfeats = diff.shape[-1]
@@ -30,8 +30,8 @@ class AdversarialModule:
     @staticmethod
     def get_alpha(alpha, iters):
         new_alpha = alpha * np.ones(iters.shape[0])
-        new_alpha[iters > 1500] *= 5.
-        new_alpha[iters > 1000] *= 5.
+        new_alpha[iters > 3500] *= 5.
+        new_alpha[iters > 2000] *= 5.
         # new_alpha[iters > 500] *= 5.
         # new_alpha[iters > 200] *= 5.
         # new_alpha[y_output > .99] *= 2.
