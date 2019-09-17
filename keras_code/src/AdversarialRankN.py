@@ -20,7 +20,7 @@ class AdversarialRankN(AdversarialModule):
 
     def get_adversarial_scores(
             self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1e-3, l1=0., extra_epochs=200
+            l2=5e-2, l1=0., extra_epochs=1000, save_data=None
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
@@ -29,22 +29,28 @@ class AdversarialRankN(AdversarialModule):
             self.build(n)
             scores[n] = self.get_adversarial_scores_for_targets(
                 X, y, n, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                beta2=beta2, epsilon=epsilon, l1=l1, l2=l2, extra_epochs=extra_epochs
+                beta2=beta2, epsilon=epsilon, l1=l1, l2=l2, extra_epochs=extra_epochs, save_data=save_data
             )
         return scores
 
     def get_adversarial_scores_for_targets(
             self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1e-3, l1=0., extra_epochs=200
+            l2=0., l1=0., extra_epochs=40, save_data=None
     ):
 
         diff_image = np.zeros(self.model.input_shape[1:])
         square_diff_image = np.zeros(self.model.input_shape[1:])
         count_finished = 0
         scores = {
-            'L2': np.Inf * np.ones(len(X)), 'amud': np.zeros(len(X)),
-            'L1': np.zeros(len(X)), 'L_inf': np.zeros(len(X)), 'L_0': np.zeros(len(X))
+            'L2': np.Inf * np.ones(len(X)), 'amud': np.Inf * np.ones(len(X)),
+            'L1': np.Inf * np.ones(len(X)), 'L_inf': np.Inf * np.ones(len(X)), 'L0': np.Inf * np.ones(len(X))
         }
+
+        if save_data is not None:
+            if not (isinstance(save_data, list) or isinstance(save_data, np.ndarray)):
+                scores['adversarial_data'] = np.zeros((len(X), ) + self.model.input_shape[1:])
+            else:
+                save_data = np.asarray(save_data)
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
@@ -52,6 +58,7 @@ class AdversarialRankN(AdversarialModule):
 
         X_active = X[active_indexes]
         X_adversarial = X_active.copy()
+        X_best = X_active.copy()
         active_targets = np.zeros_like(y[active_indexes])
         X_min = X_active.min()
         X_max = X_active.max()
@@ -76,13 +83,47 @@ class AdversarialRankN(AdversarialModule):
             iters += 1.
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
-            # active_targets = self.get_target(
-            #     None, y_argmax[active_indexes], n, output
-            # )
+            active_targets = self.get_target(
+                None, y_argmax[active_indexes], n, output
+            )
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
             y_thresh = np.min(output + 1. - active_targets, axis=-1)
             completed = np.where(y_thresh >= y_output)[0]
+            # extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
+            if len(completed) > 0:
+                pos = active_indexes[completed]
+                diff = X_adversarial[completed] - X_active[completed]
+                amsd = self.compute_l2(diff)
+                new_winner = np.where(amsd < scores['L2'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L2'][ppos] = amsd[new_winner]
+                    X_best[completed[new_winner]] = X_adversarial[completed[new_winner]]
+                amsd = self.compute_l1(diff)
+                new_winner = np.where(amsd < scores['L1'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L1'][ppos] = amsd[new_winner]
+                amsd = self.compute_l0(diff)
+                new_winner = np.where(amsd < scores['L0'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L0'][ppos] = amsd[new_winner]
+                amsd = self.compute_l_inf(diff)
+                new_winner = np.where(amsd < scores['L_inf'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L_inf'][ppos] = amsd[new_winner]
+                amsd = self.compute_amud(diff)
+                new_winner = np.where(amsd < scores['amud'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['amud'][ppos] = amsd[new_winner]
+                diff_image += np.sum(diff, axis=0)
+                square_diff_image += np.sum(np.square(diff), axis=0)
+                count_finished += len(completed)
+
             extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
             if len(extras) > 0:
                 if l2 > 0.:
@@ -90,22 +131,6 @@ class AdversarialRankN(AdversarialModule):
                 if l1 > 0.:
                     gradient[extras] += l1 * np.sign(X_adversarial[extras] - X_active[extras])
                 extra_iters[extras] += 1
-            if len(completed) > 0:
-                pos = active_indexes[completed]
-                diff = X_adversarial[completed] - X_active[completed]
-                amsd = self.compute_l2(diff)
-                new_winner = np.where(amsd < scores['L2'][pos])[0]
-                if len(new_winner) > 0:
-                    diff = diff[new_winner]
-                    pos = pos[new_winner]
-                    scores['L2'][pos] = amsd[new_winner]
-                    scores['amud'][pos] = self.compute_amud(diff)
-                    scores['L1'][pos] = self.compute_l1(diff)
-                    scores['L_inf'][pos] = self.compute_l_inf(diff)
-                    scores['L_0'][pos] = self.compute_l0(diff)
-                diff_image += np.sum(diff, axis=0)
-                square_diff_image += np.sum(np.square(diff), axis=0)
-                count_finished += len(completed)
 
             incompleted = np.where((extra_iters < extra_epochs) & ((extra_iters != 1) | (iters != 1)))[0]
 
@@ -120,6 +145,14 @@ class AdversarialRankN(AdversarialModule):
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
             if len(incompleted) != batch_size:
+                if save_data is not None:
+                    completed = np.where((extra_iters >= extra_epochs) | ((extra_iters == 1) & (iters == 1)))[0]
+                    if 'adversarial_data' in scores:
+                        scores['adversarial_data'][active_indexes[completed]] = X_best[completed]
+                    else:
+                        urls = save_data[active_indexes[completed]].tolist()
+                        for url, x_b in zip(urls, X_best):
+                            np.save(url, x_b)
                 active_indexes = active_indexes[incompleted]
                 active_targets = active_targets[incompleted]
                 X_adversarial = X_adversarial[incompleted]
@@ -146,6 +179,7 @@ class AdversarialRankN(AdversarialModule):
                     X_min = min(X_min, X_active.min())
                     X_max = max(X_max, X_active.max())
                     X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
+                    X_best = np.concatenate((X_best, X_active[-nslots:].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             if cont % 100 == 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ', Max extra : ', extra_iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
@@ -154,7 +188,7 @@ class AdversarialRankN(AdversarialModule):
         scores['amud'] = scores['amud'].tolist()
         scores['L1'] = scores['L1'].tolist()
         scores['L_inf'] = scores['L_inf'].tolist()
-        scores['L_0'] = scores['L_0'].tolist()
+        scores['L0'] = scores['L0'].tolist()
         scores['min'] = X_min
         scores['max'] = X_max
         mean = (diff_image / count_finished)
@@ -169,8 +203,10 @@ class AdversarialRankN(AdversarialModule):
         return scores
 
     def gain_function(self, y_true, y_pred, y_target, factor, epsilon=1e-3):
-        y_pred_clipped = K.clip(y_pred * (factor - epsilon), 0., 1.)
-        return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
+        # y_pred_clipped = K.clip(y_pred * (factor - epsilon), 0., 1.)
+        # return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
+        y_true_max = K.max(y_true * y_pred, axis=-1, keepdims=True)
+        return K.sum(K.relu(y_target * (y_true_max - y_pred)), axis=-1)
 
     def get_target(self, X, y_argmax, n, y_pred=None):
         if y_pred is None:
