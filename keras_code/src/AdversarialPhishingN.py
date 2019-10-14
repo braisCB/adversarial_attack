@@ -9,46 +9,50 @@ class AdversarialPhishingN(AdversarialModule):
         super(AdversarialPhishingN, self).__init__(model)
         self.adversarial_func = None
 
-    def build(self):
+    def build(self, thresh):
         lp = K.learning_phase()
         targets = layers.Input(shape=self.model.output_shape[1:])
         gradient = K.gradients(self.gain_function(
-            self.model.targets[0], self.model.outputs[0], targets), self.model.inputs)
+            self.model.targets[0], self.model.outputs[0], targets, thresh), self.model.inputs)
         self.adversarial_func = K.function(
             [self.model.inputs[0], self.model.targets[0], targets, lp], [gradient[0], self.model.outputs[0]]
         )
 
     def get_adversarial_scores(
             self, X, y, Ns, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1., l1=0., extra_epochs=200
+            l2=2e-2, l1=0., extra_epochs=1000, save_data=None
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
         scores = {}
-        self.build()
         for n in Ns:
-            scores[n] = self.get_adversarial_scores_for_targets(
-                X, y, n, threshs, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                beta2=beta2, epsilon=epsilon, l2=l2, l1=l1, extra_epochs=extra_epochs
-            )
+            for thresh in threshs:
+                self.build(thresh)
+                key = str(n) + '_' + str(thresh)
+                scores[key] = self.get_adversarial_scores_for_targets(
+                    X, y, n, thresh, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
+                    beta2=beta2, epsilon=epsilon, l2=l2, l1=l1, extra_epochs=extra_epochs, save_data=save_data
+                )
         return scores
 
     def get_adversarial_scores_for_targets(
-            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1., l1=0., extra_epochs=200
+            self, X, y, n, thresh, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
+            l2=0., l1=0., extra_epochs=40, save_data=None
     ):
 
-        is_float = isinstance(threshs, float)
-        threshs = np.asarray([threshs]) if is_float else threshs
+        diff_image = np.zeros(self.model.input_shape[1:])
+        square_diff_image = np.zeros(self.model.input_shape[1:])
+        count_finished = 0
         scores = {
-            thresh: {
-                'amsd': np.Inf * np.ones(len(X)), 'amud': np.zeros(len(X)),
-                'mean': np.zeros(len(X)), 'variance': np.zeros(len(X)), 'zero_variance': np.zeros(len(X))
-            } for thresh in threshs
+            'L2': np.Inf * np.ones(len(X)), 'amud': np.Inf * np.ones(len(X)),
+            'L1': np.Inf * np.ones(len(X)), 'L_inf': np.Inf * np.ones(len(X)), 'L0': np.Inf * np.ones(len(X))
         }
 
-        diff_image = {thresh: np.zeros(self.model.input_shape[1:]) for thresh in threshs}
-        square_diff_image = {thresh: np.zeros(self.model.input_shape[1:]) for thresh in threshs}
+        if save_data is not None:
+            if not (isinstance(save_data, list) or isinstance(save_data, np.ndarray)):
+                scores['adversarial_data'] = np.zeros((len(X),) + self.model.input_shape[1:])
+            else:
+                save_data = np.asarray(save_data)
 
         active_indexes = np.arange(min(len(X), batch_size)).astype(int)
         inactive_indexes = np.arange(min(len(X), batch_size), len(X)).astype(int)
@@ -56,17 +60,16 @@ class AdversarialPhishingN(AdversarialModule):
 
         X_active = X[active_indexes]
         X_adversarial = X_active.copy()
+        X_best = X_active.copy()
         active_targets = np.zeros_like(y[active_indexes])
         X_min = X_active.min()
         X_max = X_active.max()
-
-        batch_not_computed = np.ones((len(threshs), batch_size), dtype=bool)
 
         v_dX = np.zeros_like(X_adversarial)
         s_dX = np.zeros_like(X_adversarial)
 
         iters = np.zeros(batch_size)
-        extra_iters = np.zeros((len(threshs), batch_size), dtype=bool)
+        extra_iters = np.zeros(batch_size)
 
         ndims = [1] * X_active.ndim
         ndims[0] = -1
@@ -82,37 +85,56 @@ class AdversarialPhishingN(AdversarialModule):
             iters += 1.
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
+            # active_targets = self.get_target(
+            #     None, y_argmax[active_indexes], n, output
+            # )
 
-            if l2 > 0.:
-                gradient += l2 * (X_adversarial - X_active)
-            if l1 > 0.:
-                gradient += l1 * np.sign(X_adversarial - X_active)
+            y_output = output[range(len(output)), y_argmax[active_indexes]]
+            y_thresh = np.min(output + 1. - active_targets, axis=-1)
+            completed = np.where(y_thresh >= thresh)[0]
+            # extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
+            if len(completed) > 0:
+                pos = active_indexes[completed]
+                diff = X_adversarial[completed] - X_active[completed]
+                amsd = self.compute_l2(diff)
+                new_winner = np.where(amsd < scores['L2'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L2'][ppos] = amsd[new_winner]
+                    X_best[completed[new_winner]] = X_adversarial[completed[new_winner]]
+                amsd = self.compute_l1(diff)
+                new_winner = np.where(amsd < scores['L1'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L1'][ppos] = amsd[new_winner]
+                amsd = self.compute_l0(diff)
+                new_winner = np.where(amsd < scores['L0'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L0'][ppos] = amsd[new_winner]
+                amsd = self.compute_l_inf(diff)
+                new_winner = np.where(amsd < scores['L_inf'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['L_inf'][ppos] = amsd[new_winner]
+                amsd = self.compute_amud(diff)
+                new_winner = np.where(amsd < scores['amud'][pos])[0]
+                if len(new_winner) > 0:
+                    ppos = pos[new_winner]
+                    scores['amud'][ppos] = amsd[new_winner]
+                diff_image += np.sum(diff, axis=0)
+                square_diff_image += np.sum(np.square(diff), axis=0)
+                count_finished += len(completed)
 
-            # y_thresh = np.min(output / np.maximum(1e-8, active_targets), axis=-1)
-            y_thresh = np.max(output * active_targets, axis=-1)
+            extras = np.where((y_thresh >= thresh) | (extra_iters > 0))[0]
+            if len(extras) > 0:
+                if l2 > 0.:
+                    gradient[extras] += l2 * (X_adversarial[extras] - X_active[extras])
+                if l1 > 0.:
+                    gradient[extras] += l1 * np.sign(X_adversarial[extras] - X_active[extras])
+                extra_iters[extras] += 1
 
-            for i, thresh in enumerate(threshs):
-                # pos_output = (rank_output == n).argmax(axis=-1)
-                completed = np.where((y_thresh >= thresh) & batch_not_computed[i])[0]
-                extras = np.where(((y_thresh >= thresh) & batch_not_computed[i]) | (extra_iters[i] > 0))[0]
-                extra_iters[i, extras] += 1
-                if len(completed):
-                    pos = active_indexes[completed]
-                    diff = X_adversarial[completed] - X_active[completed]
-                    amsd = self.compute_amsd(diff)
-                    if amsd < scores[thresh]['amsd'][pos]:
-                        scores[thresh]['amsd'][pos] = amsd
-                        scores[thresh]['amud'][pos] = self.compute_amud(diff)
-                        scores[thresh]['mean'][pos] = self.compute_mean(diff)
-                        scores[thresh]['variance'][pos] = self.compute_variance(diff)
-                        scores[thresh]['zero_variance'][pos] = self.compute_zero_variance(diff)
-                    diff_image[thresh] += diff.sum(axis=0)
-                    square_diff_image[thresh] += np.square(diff).sum(axis=0)
-                completed = np.where(extra_iters > extra_epochs)[0]
-                if len(completed):
-                    batch_not_computed[i, completed] = False
-
-            incompleted = np.where(batch_not_computed.sum(axis=0) > 0)[0]
+            incompleted = np.where((extra_iters < extra_epochs) & ((extra_iters != 1) | (iters != 1)))[0]
 
             v_dX[incompleted] = beta1 * v_dX[incompleted] + (1. - beta1) * gradient[incompleted]
             s_dX[incompleted] = beta2 * s_dX[incompleted] + (1. - beta2) * np.square(gradient[incompleted])
@@ -120,29 +142,34 @@ class AdversarialPhishingN(AdversarialModule):
             v_dX_c = v_dX[incompleted]  # / (1. - np.power(beta1, iters[incompleted]).reshape(ndims))
             s_dX_c = s_dX[incompleted]  # / (1. - np.power(beta2, iters[incompleted]).reshape(ndims))
 
-            X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (np.sqrt(s_dX_c) + epsilon) # / np.max(np.abs(gradient), axis=-1, keepdims=True)
-
+            X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (
+                        np.sqrt(s_dX_c) + epsilon)  # / np.max(np.abs(gradient), axis=-1, keepdims=True)
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
             if len(incompleted) != batch_size:
+                if save_data is not None:
+                    completed = np.where((extra_iters >= extra_epochs) | ((extra_iters == 1) & (iters == 1)))[0]
+                    if 'adversarial_data' in scores:
+                        scores['adversarial_data'][active_indexes[completed]] = X_best[completed]
+                    else:
+                        urls = save_data[active_indexes[completed]].tolist()
+                        for url, x_b in zip(urls, X_best):
+                            np.save(url, x_b)
                 active_indexes = active_indexes[incompleted]
                 active_targets = active_targets[incompleted]
-                batch_not_computed = batch_not_computed[:, incompleted]
                 X_adversarial = X_adversarial[incompleted]
                 X_active = X_active[incompleted]
+                X_best = X_best[incompleted]
                 v_dX = v_dX[incompleted]
                 s_dX = s_dX[incompleted]
                 iters = iters[incompleted]
-                extra_iters = extra_iters[:, incompleted]
+                extra_iters = extra_iters[incompleted]
                 nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
                 if nslots:
                     active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
                     active_targets = np.concatenate(
                         (active_targets, np.zeros((nslots,) + active_targets.shape[1:])), axis=0
-                    )
-                    batch_not_computed = np.concatenate(
-                        (batch_not_computed, np.ones((len(threshs), nslots), dtype=bool)), axis=1
                     )
                     v_dX = np.concatenate(
                         (v_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
@@ -150,36 +177,43 @@ class AdversarialPhishingN(AdversarialModule):
                     s_dX = np.concatenate(
                         (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
                     )
-                    extra_iters = np.concatenate(
-                        (extra_iters, np.zeros((len(threshs), nslots), dtype=bool)), axis=1
-                    )
                     iters = np.concatenate((iters, np.zeros(nslots)))
+                    extra_iters = np.concatenate((extra_iters, np.zeros(nslots)))
                     X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
                     X_min = min(X_min, X_active.min())
                     X_max = max(X_max, X_active.max())
-                    X_adversarial = np.concatenate((X_adversarial, X[inactive_indexes[:nslots]].copy()), axis=0)
+                    X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
+                    X_best = np.concatenate((X_best, X_active[-nslots:].copy()), axis=0)
                     inactive_indexes = inactive_indexes[nslots:]
             if cont % 100 == 0:
-                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes),
-                      ', Max iter : ', iters.max(), ' Max_output : ', y_thresh.max(), ' Min_thresh : ', y_thresh.min())
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ',
+                      iters.max(), ', Max extra : ', extra_iters.max(), ' Max_output : ', y_output.max(),
+                      ' Min_thresh : ', y_thresh.min())
             cont += 1
-        for i in scores:
-            scores[i]['amsd'] = (scores[i]['amsd'] / (X_max - X_min)).tolist()
-            scores[i]['amud'] = scores[i]['amud'].tolist()
-            scores[i]['mean'] = scores[i]['mean'].tolist()
-            scores[i]['variance'] = scores[i]['variance'].tolist()
-            scores[i]['zero_variance'] = scores[i]['zero_variance'].tolist()
-            scores[i]['min'] = X_min
-            scores[i]['max'] = X_max
-            mean = diff_image[i] / len(X)
-            variance = square_diff_image[i] / len(X) - np.square(mean)
-            scores[i]['image_mean'] = mean.tolist()
-            scores[i]['image_variance'] = variance.tolist()
-        return scores[threshs[0]] if is_float else scores
+        scores['L2'] = (scores['L2'] / (X_max - X_min)).tolist()
+        scores['amud'] = scores['amud'].tolist()
+        scores['L1'] = scores['L1'].tolist()
+        scores['L_inf'] = scores['L_inf'].tolist()
+        scores['L0'] = scores['L0'].tolist()
+        scores['min'] = X_min
+        scores['max'] = X_max
+        mean = (diff_image / count_finished)
+        variance = square_diff_image / count_finished - np.square(mean)
+        scores['image_mean'] = mean.tolist()
+        scores['image_variance'] = variance.tolist()
+        print('L2: ', np.mean(scores['L2']))
+        print('L1: ', np.mean(scores['L1']))
+        print('L0: ', np.mean(scores['L0']))
+        print('L_inf: ', np.mean(scores['L_inf']))
+        print('AMUD: ', np.mean(scores['amud']))
+        return scores
 
-    def gain_function(self, y_true, y_pred, y_target):
-        y_pred_clipped = K.clip(y_pred, 0., 1.)
-        return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
+    # def gain_function(self, y_true, y_pred, y_target):
+    #     y_pred_clipped = K.clip(y_pred, 0., 1.)
+    #     return -1 * K.sum(y_target * K.log(y_pred_clipped), axis=-1)
+
+    def gain_function(self, y_true, y_pred, y_target, threshold):
+        return K.sum(K.relu(y_target * (threshold - y_pred)), axis=-1)
 
     def get_target(self, X, y_argmax, n, y_pred=None):
         if y_pred is None:

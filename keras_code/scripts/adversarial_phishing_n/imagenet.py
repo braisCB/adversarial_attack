@@ -7,20 +7,29 @@ from keras import backend as K, optimizers
 import numpy as np
 from keras.utils import to_categorical
 import json
-from scipy.io import loadmat
+import pickle
 
+config = K.tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.9
+
+K.tensorflow_backend.set_session(K.tf.Session(config=config))
 
 image_folder = '/home/brais/Descargas/ILSVRC2012_img_val/'
-label_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt'
-meta_filename = '/home/brais/Descargas/ILSVRC2012_devkit_t12/data/meta.mat'
-filename = 'phishing_imagenet_rank.json'
+images_per_label = 1
+data_folder = './data/'
+data_filename = data_folder + 'imagenet_selected_images_' + str(images_per_label) + '.pickle'
+filename = 'imagenet_rank.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 40
-alpha = 1e-1
-Ns = [1]
-threshs = [.5, .75, .9, .95]
+batch_size = 15
+alpha = 1e-4
+Ns = [100]
+threshs = [.95]
 optimizer = optimizers.Adam(1e-3)
+
+
+def get_filenames(folder):
+    return list(sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]))
 
 
 def boundary_constraint(minval, maxval):
@@ -33,41 +42,22 @@ def boundary_constraint(minval, maxval):
     return func
 
 
-def get_filenames(folder):
-    return list(sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]))
-
-
 if __name__ == '__main__':
     os.chdir('../../../')
 
-    try:
-        with open(info_folder + filename) as outfile:
-            info_data = json.load(outfile)
-            print(list(info_data.keys()))
-    except:
-        pass
-
     graph = K.tf.get_default_graph()
 
-    meta = loadmat(meta_filename)
-
-    image_filenames = get_filenames(image_folder)
-    synsets_index = np.zeros((1000,), dtype=int)
-    synsets_names = []
-    for i in range(1000):
-        synsets_index[i] = int(meta['synsets'][i,0][0][0][0]) - 1
-        synsets_names.append(meta['synsets'][i,0][1][0])
-
-    # synsets_names = np.array(synsets_names)[synsets_index]
-    order = np.argsort(synsets_names) + 1
-    conversion = dict(zip(order, synsets_index))
-    image_labels = np.loadtxt(label_filename, dtype=int)
-    image_labels = np.array([conversion[x] for x in image_labels])
+    with open(data_filename, 'rb') as handle:
+        selected_images = pickle.load(handle)
+    image_filenames = selected_images['filenames']
+    image_labels = selected_images['labels']
 
     with open(info_folder + min_max_filename) as outfile:
         min_max_info = json.load(outfile)
 
     for network, preprocess in networks:
+
+        network_name = network.__name__
 
         model = network(include_top=True, weights='imagenet')
         model.trainable = False
@@ -82,7 +72,6 @@ if __name__ == '__main__':
 
         y = to_categorical(image_labels, nclasses)
 
-        network_name = network.__name__
         print('NETWORK :', network_name)
         if network_name in min_max_info:
             print('using constraint : ', min_max_info[network_name])
@@ -95,7 +84,7 @@ if __name__ == '__main__':
         with graph.as_default():
             adversarial_rank = AdversarialPhishingN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, threshs=threshs, Ns=Ns, batch_size=batch_size, alpha=alpha, constraint=constrain_func
+                image_generator, y, Ns=Ns, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True
             )
 
         if not os.path.isdir(info_folder):
@@ -107,7 +96,19 @@ if __name__ == '__main__':
         except:
             info_data = {}
 
+        for i in scores:
+            if i not in selected_images:
+                selected_images[i] = {}
+            selected_images[i]['adversarial_data'] = scores[i]['adversarial_data']
+            del scores[i]['adversarial_data']
         info_data[network_name] = scores
 
         with open(info_folder + filename, 'w') as outfile:
             json.dump(info_data, outfile)
+
+        network_folder = data_folder + network_name + '/'
+        if not os.path.isdir(network_folder):
+            os.makedirs(network_folder)
+        adv_filename = network_folder + 'adversarial_data_phishing_100_095_' + str(images_per_label) + '.pickle'
+        with open(adv_filename, 'wb') as handle:
+            pickle.dump(selected_images, handle, protocol=pickle.HIGHEST_PROTOCOL)

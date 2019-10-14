@@ -157,6 +157,7 @@ class AdversarialRankN(AdversarialModule):
                 active_targets = active_targets[incompleted]
                 X_adversarial = X_adversarial[incompleted]
                 X_active = X_active[incompleted]
+                X_best = X_best[incompleted]
                 v_dX = v_dX[incompleted]
                 s_dX = s_dX[incompleted]
                 iters = iters[incompleted]
