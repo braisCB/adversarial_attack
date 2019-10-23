@@ -23,14 +23,10 @@ min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
 batch_size = 15
 alpha = 1e-4
-Ns = [100]
 threshs = [.95]
 optimizer = optimizers.Adam(1e-3)
 
-
-def get_filenames(folder):
-    return list(sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]))
-
+n = 999
 
 def boundary_constraint(minval, maxval):
 
@@ -44,6 +40,10 @@ def boundary_constraint(minval, maxval):
 
 if __name__ == '__main__':
     os.chdir('../../../')
+
+    avd_filename = data_folder + 'adversarial_labels_' + str(images_per_label) + '.pickle'
+    with open(avd_filename, 'rb') as handle:
+        n = to_categorical(pickle.load(handle), 1000)
 
     graph = K.tf.get_default_graph()
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
         with graph.as_default():
             adversarial_rank = AdversarialPhishingN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, Ns=Ns, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True
+                image_generator, y, n=n, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True
             )
 
         if not os.path.isdir(info_folder):
@@ -109,6 +109,6 @@ if __name__ == '__main__':
         network_folder = data_folder + network_name + '/'
         if not os.path.isdir(network_folder):
             os.makedirs(network_folder)
-        adv_filename = network_folder + 'adversarial_data_phishing_100_095_' + str(images_per_label) + '.pickle'
+        adv_filename = network_folder + 'adversarial_data_phishing_random_095_' + str(images_per_label) + '.pickle'
         with open(adv_filename, 'wb') as handle:
             pickle.dump(selected_images, handle, protocol=pickle.HIGHEST_PROTOCOL)

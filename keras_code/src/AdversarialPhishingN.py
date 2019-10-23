@@ -19,26 +19,25 @@ class AdversarialPhishingN(AdversarialModule):
         )
 
     def get_adversarial_scores(
-            self, X, y, Ns, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
+            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
             l2=2e-2, l1=0., extra_epochs=1000, save_data=None
     ):
-        is_int = isinstance(Ns, int)
-        Ns = np.asarray([Ns]) if is_int else Ns
         scores = {}
-        for n in Ns:
-            for thresh in threshs:
-                self.build(thresh)
-                key = str(n) + '_' + str(thresh)
-                scores[key] = self.get_adversarial_scores_for_targets(
-                    X, y, n, thresh, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                    beta2=beta2, epsilon=epsilon, l2=l2, l1=l1, extra_epochs=extra_epochs, save_data=save_data
-                )
+        for thresh in threshs:
+            self.build(thresh)
+            key = str(n) + '_' + str(thresh)
+            scores[key] = self.get_adversarial_scores_for_targets(
+                X, y, n, thresh, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1, beta2=beta2,
+                epsilon=epsilon, l2=l2, l1=l1, extra_epochs=extra_epochs, save_data=save_data
+            )
         return scores
 
     def get_adversarial_scores_for_targets(
             self, X, y, n, thresh, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
             l2=0., l1=0., extra_epochs=40, save_data=None
     ):
+        if not isinstance(n, int):
+            n = np.asarray(n)
 
         diff_image = np.zeros(self.model.input_shape[1:])
         square_diff_image = np.zeros(self.model.input_shape[1:])
@@ -80,14 +79,11 @@ class AdversarialPhishingN(AdversarialModule):
             if len(first_iter) > 0:
                 active_targets[first_iter] = self.get_target(
                     X_active[first_iter], y_argmax[active_indexes[first_iter]], n
-                )
+                ) if isinstance(n, int) else n[active_indexes[first_iter]]
 
             iters += 1.
 
             gradient, output = self.adversarial_func([X_adversarial, y[active_indexes], active_targets, 0])
-            # active_targets = self.get_target(
-            #     None, y_argmax[active_indexes], n, output
-            # )
 
             y_output = output[range(len(output)), y_argmax[active_indexes]]
             y_thresh = np.min(output + 1. - active_targets, axis=-1)
