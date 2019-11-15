@@ -4,6 +4,7 @@ from keras_code.scripts import networks, model_folder, info_folder
 from keras_code.src.AdversarialRankN import AdversarialRankN
 from keras_code.src.generators import FromDiskGenerator
 from keras import backend as K, optimizers
+from keras_code.src.utils import inverse_prepocess
 import numpy as np
 from keras.utils import to_categorical
 import json
@@ -23,12 +24,19 @@ min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
 batch_size = 25
 alpha = 1e-4
-Ns = [1]
+Ns = [5]
 optimizer = optimizers.Adam(1e-3)
 
 
 def get_filenames(folder):
     return list(sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]))
+
+
+def inverse_func(mode):
+
+    def func(x):
+        return inverse_prepocess(x, mode)
+    return func
 
 
 def boundary_constraint(minval, maxval):
@@ -54,9 +62,10 @@ if __name__ == '__main__':
     with open(info_folder + min_max_filename) as outfile:
         min_max_info = json.load(outfile)
 
-    for network, preprocess in networks:
+    for network, preprocess, type in networks:
 
         network_name = network.__name__
+        inverse_transform = inverse_func(type)
 
         model = network(include_top=True, weights='imagenet')
         model.trainable = False
@@ -83,7 +92,8 @@ if __name__ == '__main__':
         with graph.as_default():
             adversarial_rank = AdversarialRankN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, Ns=Ns, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True
+                image_generator, y, Ns=Ns, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True,
+                inverse_transform=inverse_transform
             )
 
         if not os.path.isdir(info_folder):
@@ -108,6 +118,9 @@ if __name__ == '__main__':
         network_folder = data_folder + network_name + '/'
         if not os.path.isdir(network_folder):
             os.makedirs(network_folder)
-        adv_filename = network_folder + 'adversarial_data_1_' + str(images_per_label) + '.pickle'
+        adv_filename = network_folder + 'adversarial_data_try_' + str(images_per_label) + '.pickle'
         with open(adv_filename, 'wb') as handle:
             pickle.dump(selected_images, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        # del model
+        # K.clear_session()

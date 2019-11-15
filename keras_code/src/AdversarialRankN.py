@@ -20,7 +20,7 @@ class AdversarialRankN(AdversarialModule):
 
     def get_adversarial_scores(
             self, X, y, Ns, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=5e-2, l1=0., extra_epochs=1000, save_data=None
+            l2=1e-4, l1=1e-4, extra_epochs=250, save_data=None, inverse_transform=None
     ):
         is_int = isinstance(Ns, int)
         Ns = np.asarray([Ns]) if is_int else Ns
@@ -28,15 +28,16 @@ class AdversarialRankN(AdversarialModule):
         for n in Ns:
             self.build(n)
             scores[n] = self.get_adversarial_scores_for_targets(
-                X, y, n, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1,
-                beta2=beta2, epsilon=epsilon, l1=l1, l2=l2, extra_epochs=extra_epochs, save_data=save_data
+                X, y, n, constraint=constraint, batch_size=batch_size, alpha=alpha, beta1=beta1, beta2=beta2,
+                epsilon=epsilon, l1=l1, l2=l2, extra_epochs=extra_epochs, save_data=save_data, inverse_transform=inverse_transform
             )
         return scores
 
     def get_adversarial_scores_for_targets(
             self, X, y, n, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=0., l1=0., extra_epochs=40, save_data=None
+            l2=0., l1=0., extra_epochs=1000, save_data=None, inverse_transform=None
     ):
+        # hechas pruebas con l2 = 5e-2
 
         diff_image = np.zeros(self.model.input_shape[1:])
         square_diff_image = np.zeros(self.model.input_shape[1:])
@@ -68,6 +69,7 @@ class AdversarialRankN(AdversarialModule):
 
         iters = np.zeros(batch_size)
         extra_iters = np.zeros(batch_size)
+        hits = np.zeros(batch_size)
 
         ndims = [1] * X_active.ndim
         ndims[0] = -1
@@ -93,13 +95,13 @@ class AdversarialRankN(AdversarialModule):
             # extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
             if len(completed) > 0:
                 pos = active_indexes[completed]
-                diff = X_adversarial[completed] - X_active[completed]
+                diff = (inverse_transform(X_adversarial[completed]) - inverse_transform(X_active[completed])) / 255.
                 amsd = self.compute_l2(diff)
                 new_winner = np.where(amsd < scores['L2'][pos])[0]
                 if len(new_winner) > 0:
                     ppos = pos[new_winner]
                     scores['L2'][ppos] = amsd[new_winner]
-                    X_best[completed[new_winner]] = X_adversarial[completed[new_winner]]
+                    X_best[completed[new_winner]] = X_adversarial[completed[new_winner]].copy()
                 amsd = self.compute_l1(diff)
                 new_winner = np.where(amsd < scores['L1'][pos])[0]
                 if len(new_winner) > 0:
@@ -123,13 +125,15 @@ class AdversarialRankN(AdversarialModule):
                 diff_image += np.sum(diff, axis=0)
                 square_diff_image += np.sum(np.square(diff), axis=0)
                 count_finished += len(completed)
+                hits[completed] += 1
 
             extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
             if len(extras) > 0:
+                sign = np.sign(X_adversarial[extras] - X_active[extras])
                 if l2 > 0.:
                     gradient[extras] += l2 * (X_adversarial[extras] - X_active[extras])
                 if l1 > 0.:
-                    gradient[extras] += l1 * np.sign(X_adversarial[extras] - X_active[extras])
+                    gradient[extras] += l1 * sign
                 extra_iters[extras] += 1
 
             incompleted = np.where((extra_iters < extra_epochs) & ((extra_iters != 1) | (iters != 1)))[0]
@@ -144,46 +148,55 @@ class AdversarialRankN(AdversarialModule):
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
-            if len(incompleted) != batch_size:
+            if len(extras) > 0.:
+                new_sign = np.sign(X_adversarial[extras] - X_active[extras])
+                X_adversarial[extras] = np.where(new_sign * sign <= 0, X_active[extras], X_adversarial[extras])
+
+            completed = np.where((extra_iters >= extra_epochs) | ((extra_iters == 1) & (iters == 1)))[0]
+            if len(completed) > 0:
                 if save_data is not None:
-                    completed = np.where((extra_iters >= extra_epochs) | ((extra_iters == 1) & (iters == 1)))[0]
                     if 'adversarial_data' in scores:
-                        scores['adversarial_data'][active_indexes[completed]] = X_best[completed]
+                        scores['adversarial_data'][active_indexes[completed]] = X_best[completed].copy()
                     else:
                         urls = save_data[active_indexes[completed]].tolist()
                         for url, x_b in zip(urls, X_best):
                             np.save(url, x_b)
-                active_indexes = active_indexes[incompleted]
-                active_targets = active_targets[incompleted]
-                X_adversarial = X_adversarial[incompleted]
-                X_active = X_active[incompleted]
-                X_best = X_best[incompleted]
-                v_dX = v_dX[incompleted]
-                s_dX = s_dX[incompleted]
-                iters = iters[incompleted]
-                extra_iters = extra_iters[incompleted]
-                nslots = min(len(inactive_indexes), batch_size - len(active_indexes))
+                nslots = min(len(inactive_indexes), len(completed))
+                valid_pos = None
+                if nslots < len(completed):
+                    useless = completed[nslots:]
+                    valid_pos = np.setdiff1d(np.arange(len(active_indexes), dtype=int), useless, assume_unique=True)
+                    completed = completed[:nslots]
                 if nslots:
-                    active_indexes = np.concatenate((active_indexes, inactive_indexes[:nslots]))
-                    active_targets = np.concatenate(
-                        (active_targets, np.zeros((nslots,) + active_targets.shape[1:])), axis=0
-                    )
-                    v_dX = np.concatenate(
-                        (v_dX, np.zeros((nslots, ) + X_adversarial.shape[1:], dtype=bool)), axis=0
-                    )
-                    s_dX = np.concatenate(
-                        (s_dX, np.zeros((nslots,) + X_adversarial.shape[1:], dtype=bool)), axis=0
-                    )
-                    iters = np.concatenate((iters, np.zeros(nslots)))
-                    extra_iters = np.concatenate((extra_iters, np.zeros(nslots)))
-                    X_active = np.concatenate((X_active, X[inactive_indexes[:nslots]]), axis=0)
+                    active_indexes[completed] = inactive_indexes[:nslots]
+                    active_targets[completed] = 0
+                    v_dX[completed] = 0
+                    s_dX[completed] = 0
+                    iters[completed] = 0
+                    extra_iters[completed] = 0
+                    hits[completed] = 0
+                    X_active[completed] = X[inactive_indexes[:nslots]]
                     X_min = min(X_min, X_active.min())
                     X_max = max(X_max, X_active.max())
-                    X_adversarial = np.concatenate((X_adversarial, X_active[-nslots:].copy()), axis=0)
-                    X_best = np.concatenate((X_best, X_active[-nslots:].copy()), axis=0)
+                    X_adversarial[completed] = X_active[completed].copy()
+                    X_best[completed] = X_active[completed].copy()
                     inactive_indexes = inactive_indexes[nslots:]
-            if cont % 100 == 0:
-                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ', iters.max(), ', Max extra : ', extra_iters.max(), ' Max_output : ', y_output.max(), ' Min_thresh : ', y_thresh.min())
+                if valid_pos is not None:
+                    active_indexes = active_indexes[valid_pos]
+                    active_targets = active_targets[valid_pos]
+                    v_dX = v_dX[valid_pos]
+                    s_dX = s_dX[valid_pos]
+                    iters = iters[valid_pos]
+                    extra_iters = extra_iters[valid_pos]
+                    hits = hits[valid_pos]
+                    X_active = X_active[valid_pos]
+                    X_adversarial = X_adversarial[valid_pos]
+                    X_best = X_best[valid_pos]
+
+            if cont % 100 == 0 and len(active_indexes) > 0:
+                print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes),
+                      ', Max iter : ', iters.max(), ', Max extra : ', extra_iters.max(), ', Min extra : ', extra_iters.min(),
+                      ', Max_diff : ', (y_thresh - y_output).max(), ', Min diff : ', (y_thresh - y_output).min())
             cont += 1
         scores['L2'] = (scores['L2'] / (X_max - X_min)).tolist()
         scores['amud'] = scores['amud'].tolist()

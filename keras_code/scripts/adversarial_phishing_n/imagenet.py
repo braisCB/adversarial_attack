@@ -1,8 +1,10 @@
-from keras_code.src import backend
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+from keras_code.src import backend
 from keras_code.scripts import networks, model_folder, info_folder
 from keras_code.src.AdversarialPhishingN import AdversarialPhishingN
 from keras_code.src.generators import FromDiskGenerator
+from keras_code.src.utils import inverse_prepocess
 from keras import backend as K, optimizers
 import numpy as np
 from keras.utils import to_categorical
@@ -26,7 +28,8 @@ alpha = 1e-4
 threshs = [.95]
 optimizer = optimizers.Adam(1e-3)
 
-n = 999
+n = 1
+
 
 def boundary_constraint(minval, maxval):
 
@@ -38,26 +41,35 @@ def boundary_constraint(minval, maxval):
     return func
 
 
+def inverse_func(mode):
+
+    def func(x):
+        return inverse_prepocess(x, mode)
+    return func
+
+
 if __name__ == '__main__':
     os.chdir('../../../')
 
-    avd_filename = data_folder + 'adversarial_labels_' + str(images_per_label) + '.pickle'
-    with open(avd_filename, 'rb') as handle:
-        n = to_categorical(pickle.load(handle), 1000)
+    # avd_filename = data_folder + 'adversarial_labels_' + str(images_per_label) + '.pickle'
+    # with open(avd_filename, 'rb') as handle:
+    #     n = to_categorical(pickle.load(handle), 1000)
 
     graph = K.tf.get_default_graph()
 
     with open(data_filename, 'rb') as handle:
         selected_images = pickle.load(handle)
+
     image_filenames = selected_images['filenames']
     image_labels = selected_images['labels']
 
     with open(info_folder + min_max_filename) as outfile:
         min_max_info = json.load(outfile)
 
-    for network, preprocess in networks:
+    for network, preprocess, type in networks:
 
         network_name = network.__name__
+        inverse_transform = inverse_func(type)
 
         model = network(include_top=True, weights='imagenet')
         model.trainable = False
@@ -84,7 +96,8 @@ if __name__ == '__main__':
         with graph.as_default():
             adversarial_rank = AdversarialPhishingN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, n=n, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func, save_data=True
+                image_generator, y, n=n, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func,
+                save_data=True, inverse_transform=inverse_transform
             )
 
         if not os.path.isdir(info_folder):
@@ -109,6 +122,6 @@ if __name__ == '__main__':
         network_folder = data_folder + network_name + '/'
         if not os.path.isdir(network_folder):
             os.makedirs(network_folder)
-        adv_filename = network_folder + 'adversarial_data_phishing_random_095_' + str(images_per_label) + '.pickle'
+        adv_filename = network_folder + 'adversarial_data_phishing_random_095_1_' + str(images_per_label) + '.pickle'
         with open(adv_filename, 'wb') as handle:
             pickle.dump(selected_images, handle, protocol=pickle.HIGHEST_PROTOCOL)
