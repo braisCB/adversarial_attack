@@ -23,9 +23,9 @@ data_filename = data_folder + 'imagenet_selected_images_' + str(images_per_label
 filename = 'imagenet_rank.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 15
+batch_size = 25
 alpha = 1e-4
-threshs = [.95]
+threshs = [.0]
 optimizer = optimizers.Adam(1e-3)
 
 n = 100
@@ -81,8 +81,27 @@ if __name__ == '__main__':
         image_generator = FromDiskGenerator(
             image_filenames, target_size=input_shape, batch_size=image_batch_size, preprocess_func=preprocess
         )
+        image_generator = image_generator[:1000]
 
-        y = to_categorical(image_labels, nclasses)
+        y_output = model.predict(image_generator, batch_size=40)
+        y_output = np.argmax(y_output, axis=-1)
+
+        pos = np.where(image_labels == y_output)[0]
+        np.random.shuffle(pos)
+        image_filenames = np.array(image_filenames)[pos[:100]]
+        image_labels = np.array(image_labels)[pos[:100]]
+
+        new_filenames = []
+        new_labels = []
+        for j in range(9):
+            lab = np.random.randint(1000, size=(100, 1))
+            while np.any(lab == image_labels):
+                p = np.where(lab == image_labels)[0]
+                lab[p] = np.random.randint(1000, size=(len(p), 1))
+            new_filenames.append(image_filenames)
+            new_labels.append(to_categorical(lab, nclasses))
+        image_filenames = np.concatenate(new_filenames, axis=0).tolist()
+        image_labels = np.concatenate(new_labels, axis=0)
 
         print('NETWORK :', network_name)
         if network_name in min_max_info:
@@ -93,10 +112,14 @@ if __name__ == '__main__':
         else:
             constrain_func = None
 
+        image_generator = FromDiskGenerator(
+            image_filenames, target_size=input_shape, batch_size=image_batch_size, preprocess_func=preprocess
+        )
+
         with graph.as_default():
             adversarial_rank = AdversarialPhishingN(model=model)
             scores = adversarial_rank.get_adversarial_scores(
-                image_generator, y, n=n, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func,
+                image_generator, image_labels, n=image_labels, threshs=threshs, batch_size=batch_size, alpha=alpha, constraint=constrain_func,
                 save_data=True, inverse_transform=inverse_transform
             )
 

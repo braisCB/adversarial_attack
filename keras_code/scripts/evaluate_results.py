@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-filename = './info/imagenet_rank_with_constraint.json'
+filename = './info/imagenet_rank.json'
 
 
 def getsize(network_name):

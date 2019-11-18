@@ -1,5 +1,6 @@
-from keras_code.src import backend
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+from keras_code.src import backend
 from keras_code.scripts import networks, model_folder, info_folder
 from keras_code.src.AdversarialRankN import AdversarialRankN
 from keras_code.src.generators import FromDiskGenerator
@@ -10,10 +11,10 @@ from keras.utils import to_categorical
 import json
 import pickle
 
-config = K.tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.9
-
-K.tensorflow_backend.set_session(K.tf.Session(config=config))
+# config = K.tf.ConfigProto()
+# config.gpu_options.per_process_gpu_memory_fraction = 0.9
+#
+# K.tensorflow_backend.set_session(K.tf.Session(config=config))
 
 image_folder = '/home/brais/Descargas/ILSVRC2012_img_val/'
 images_per_label = 1
@@ -22,9 +23,9 @@ data_filename = data_folder + 'imagenet_selected_images_' + str(images_per_label
 filename = 'imagenet_rank.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
-batch_size = 25
+batch_size = 15
 alpha = 1e-4
-Ns = [5]
+Ns = [1]
 optimizer = optimizers.Adam(1e-3)
 
 
@@ -105,12 +106,18 @@ if __name__ == '__main__':
         except:
             info_data = {}
 
+        if network_name not in info_data:
+            info_data[network_name] = {}
+
+        if 'untargeted' not in info_data[network_name]:
+            info_data[network_name]['untargeted'] = {}
+
         for i in Ns:
             if i not in selected_images:
                 selected_images[i] = {}
             selected_images[i]['adversarial_data'] = scores[i]['adversarial_data']
             del scores[i]['adversarial_data']
-        info_data[network_name] = scores
+            info_data[network_name]['untargeted'][i] = scores[i]
 
         with open(info_folder + filename, 'w') as outfile:
             json.dump(info_data, outfile)

@@ -22,6 +22,19 @@ class AdversarialModule:
         return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), ord=0, axis=1)
         # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
 
+    def compute_amsd_2(self, diff):
+        return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), ord=2, axis=1) / np.sqrt(np.prod(diff.shape[1:]))
+        # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+
+    def compute_amsd_1(self, diff):
+        return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), ord=1, axis=1) / np.prod(diff.shape[1:])
+        # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+
+    def compute_amsd_0(self, diff):
+        return np.linalg.norm(diff.reshape((-1, np.prod(diff.shape[1:]))), ord=0, axis=1) / np.prod(diff.shape[1:])
+        # return np.mean(np.square(diff).reshape((-1, np.prod(diff.shape[1:]))), axis=1)
+
+
     @staticmethod
     def compute_amud(diff):
         diff = np.square(diff).reshape((-1, np.prod(diff.shape[1:])))

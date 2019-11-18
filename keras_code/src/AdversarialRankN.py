@@ -44,7 +44,9 @@ class AdversarialRankN(AdversarialModule):
         count_finished = 0
         scores = {
             'L2': np.Inf * np.ones(len(X)), 'amud': np.Inf * np.ones(len(X)),
-            'L1': np.Inf * np.ones(len(X)), 'L_inf': np.Inf * np.ones(len(X)), 'L0': np.Inf * np.ones(len(X))
+            'L1': np.Inf * np.ones(len(X)), 'L_inf': np.Inf * np.ones(len(X)), 'L0': np.Inf * np.ones(len(X)),
+            'AMSD_2': np.Inf * np.ones(len(X)), 'AMSD_1': np.Inf * np.ones(len(X)),
+            'AMSD_0': np.Inf * np.ones(len(X)),
         }
 
         if save_data is not None:
@@ -101,17 +103,20 @@ class AdversarialRankN(AdversarialModule):
                 if len(new_winner) > 0:
                     ppos = pos[new_winner]
                     scores['L2'][ppos] = amsd[new_winner]
+                    scores['AMSD_2'][ppos] = self.compute_amsd_2(diff[new_winner])
                     X_best[completed[new_winner]] = X_adversarial[completed[new_winner]].copy()
                 amsd = self.compute_l1(diff)
                 new_winner = np.where(amsd < scores['L1'][pos])[0]
                 if len(new_winner) > 0:
                     ppos = pos[new_winner]
                     scores['L1'][ppos] = amsd[new_winner]
+                    scores['AMSD_1'][ppos] = self.compute_amsd_1(diff[new_winner])
                 amsd = self.compute_l0(diff)
                 new_winner = np.where(amsd < scores['L0'][pos])[0]
                 if len(new_winner) > 0:
                     ppos = pos[new_winner]
                     scores['L0'][ppos] = amsd[new_winner]
+                    scores['AMSD_0'][ppos] = self.compute_amsd_0(diff[new_winner])
                 amsd = self.compute_l_inf(diff)
                 new_winner = np.where(amsd < scores['L_inf'][pos])[0]
                 if len(new_winner) > 0:
@@ -129,9 +134,10 @@ class AdversarialRankN(AdversarialModule):
 
             extras = np.where((y_thresh >= y_output) | (extra_iters > 0))[0]
             if len(extras) > 0:
-                sign = np.sign(X_adversarial[extras] - X_active[extras])
+                diff = X_adversarial[extras] - X_active[extras]
+                sign = np.sign(diff)
                 if l2 > 0.:
-                    gradient[extras] += l2 * (X_adversarial[extras] - X_active[extras])
+                    gradient[extras] += l2 * diff
                 if l1 > 0.:
                     gradient[extras] += l1 * sign
                 extra_iters[extras] += 1
@@ -170,6 +176,7 @@ class AdversarialRankN(AdversarialModule):
                 if nslots:
                     active_indexes[completed] = inactive_indexes[:nslots]
                     active_targets[completed] = 0
+                    y_active_targets[completed] = 0
                     v_dX[completed] = 0
                     s_dX[completed] = 0
                     iters[completed] = 0
@@ -184,6 +191,7 @@ class AdversarialRankN(AdversarialModule):
                 if valid_pos is not None:
                     active_indexes = active_indexes[valid_pos]
                     active_targets = active_targets[valid_pos]
+                    y_active_targets = y_active_targets[valid_pos]
                     v_dX = v_dX[valid_pos]
                     s_dX = s_dX[valid_pos]
                     iters = iters[valid_pos]
@@ -198,7 +206,10 @@ class AdversarialRankN(AdversarialModule):
                       ', Max iter : ', iters.max(), ', Max extra : ', extra_iters.max(), ', Min extra : ', extra_iters.min(),
                       ', Max_diff : ', (y_thresh - y_output).max(), ', Min diff : ', (y_thresh - y_output).min())
             cont += 1
-        scores['L2'] = (scores['L2'] / (X_max - X_min)).tolist()
+        scores['L2'] = scores['L2'].tolist()
+        scores['AMSD_2'] = scores['AMSD_2'].tolist()
+        scores['AMSD_1'] = scores['AMSD_1'].tolist()
+        scores['AMSD_0'] = scores['AMSD_0'].tolist()
         scores['amud'] = scores['amud'].tolist()
         scores['L1'] = scores['L1'].tolist()
         scores['L_inf'] = scores['L_inf'].tolist()
@@ -209,11 +220,33 @@ class AdversarialRankN(AdversarialModule):
         variance = square_diff_image / count_finished - np.square(mean)
         scores['image_mean'] = mean.tolist()
         scores['image_variance'] = variance.tolist()
+        print('MEANS')
+        print('AMSD_2: ', np.mean(scores['AMSD_2']))
+        print('AMSD_1: ', np.mean(scores['AMSD_1']))
+        print('AMSD_0: ', np.mean(scores['AMSD_0']))
         print('L2: ', np.mean(scores['L2']))
         print('L1: ', np.mean(scores['L1']))
         print('L0: ', np.mean(scores['L0']))
         print('L_inf: ', np.mean(scores['L_inf']))
         print('AMUD: ', np.mean(scores['amud']))
+        print('MAX')
+        print('AMSD_2: ', np.max(scores['AMSD_2']))
+        print('AMSD_1: ', np.max(scores['AMSD_1']))
+        print('AMSD_0: ', np.max(scores['AMSD_0']))
+        print('L2: ', np.max(scores['L2']))
+        print('L1: ', np.max(scores['L1']))
+        print('L0: ', np.max(scores['L0']))
+        print('L_inf: ', np.max(scores['L_inf']))
+        print('AMUD: ', np.max(scores['amud']))
+        print('MEDIAN')
+        print('AMSD_2: ', np.median(scores['AMSD_2']))
+        print('AMSD_1: ', np.median(scores['AMSD_1']))
+        print('AMSD_0: ', np.median(scores['AMSD_0']))
+        print('L2: ', np.median(scores['L2']))
+        print('L1: ', np.median(scores['L1']))
+        print('L0: ', np.median(scores['L0']))
+        print('L_inf: ', np.median(scores['L_inf']))
+        print('AMUD: ', np.median(scores['amud']))
         return scores
 
     def gain_function(self, y_true, y_pred, y_target, factor, epsilon=1e-3):
