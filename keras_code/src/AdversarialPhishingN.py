@@ -19,8 +19,8 @@ class AdversarialPhishingN(AdversarialModule):
         )
 
     def get_adversarial_scores(
-            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-4, beta1=0.9, beta2=0.999, epsilon=1e-8,
-            l2=1e-4, l1=1e-4, extra_epochs=250, save_data=None, inverse_transform=None
+            self, X, y, n, threshs, constraint=None, batch_size=10, alpha=1e-2, beta1=0.9, beta2=0.999, epsilon=1e-8,
+            l2=1e-2, l1=1e-2, extra_epochs=1000, save_data=None, inverse_transform=None
     ):
         scores = {}
         for thresh in threshs:
@@ -132,12 +132,15 @@ class AdversarialPhishingN(AdversarialModule):
 
             extras = np.where(((y_thresh > thresh) & (y_best == y_active_targets)) | (extra_iters > 0))[0]
             if len(extras) > 0:
+                adv_completed = np.where((y_thresh > thresh) & (y_best == y_active_targets))[0]
+                adv_extra = np.where(((y_thresh <= thresh) | (y_best != y_active_targets)) & (extra_iters > 0))[0]
+                extras = np.concatenate((adv_completed, adv_extra))
                 diff = X_adversarial[extras] - X_active[extras]
                 sign = np.sign(diff)
                 if l2 > 0.:
-                    gradient[extras] += l2 * diff
+                    gradient[adv_completed] += l2 * diff[:len(adv_completed)]
                 if l1 > 0.:
-                    gradient[extras] += l1 * sign
+                    gradient[adv_completed] += l1 * sign[:len(adv_completed)]
                 extra_iters[extras] += 1
 
             incompleted = np.where((extra_iters < extra_epochs) & ((extra_iters != 1) | (iters != 1)))[0]
@@ -150,6 +153,8 @@ class AdversarialPhishingN(AdversarialModule):
 
             X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * v_dX_c / (
                         np.sqrt(s_dX_c) + epsilon)  # / np.max(np.abs(gradient), axis=-1, keepdims=True)
+            # X_adversarial[incompleted] -= self.get_alpha(alpha, iters[incompleted]).reshape(ndims) * gradient[incompleted] / np.max(np.abs(gradient) + 1e-8, axis=-1, keepdims=True)
+
             if constraint is not None:
                 X_adversarial[incompleted] = constraint(X_adversarial[incompleted])
 
@@ -197,10 +202,11 @@ class AdversarialPhishingN(AdversarialModule):
                     X_active = X_active[valid_pos]
                     X_adversarial = X_adversarial[valid_pos]
                     X_best = X_best[valid_pos]
-            if cont % 100 == 0:
+            if cont % 100 == 0 and len(active_indexes) > 0:
                 print('Cont : ', cont, ', Remaining : ', len(inactive_indexes) + len(active_indexes), ', Max iter : ',
                       iters.max(), ', Max extra : ', extra_iters.max(), ' Min extra : ', extra_iters.min(),
-                      ' Min_thresh : ', y_thresh.min())
+                      ' Min_thresh : ', y_thresh.min(), 'l1 : ', scores['L1'][active_indexes].mean(),
+                      'l2 : ', scores['L2'][active_indexes].mean(), 'l_inf : ', scores['L_inf'][active_indexes].mean())
             cont += 1
 
         scores['L2'] = scores['L2'].tolist()
@@ -252,8 +258,8 @@ class AdversarialPhishingN(AdversarialModule):
 
     def gain_function(self, y_true, y_pred, y_target, threshold):
         if threshold < 0.5:
-            y_target_max = K.max(y_target * y_pred, axis=-1, keepdims=True)
-            return K.sum(K.relu((1 - y_target) * y_pred - y_target_max), axis=-1) + K.relu(threshold - y_target_max)
+            y_not_target_max = K.stop_gradient(K.max((1. - y_target) * y_pred, axis=-1, keepdims=True))
+            return K.sum(K.relu(y_target * (y_not_target_max - y_pred)), axis=-1) + K.sum(K.relu(y_target * (threshold - y_pred)), axis=-1)
         else:
             return K.sum(K.relu(y_target * (threshold - y_pred)), axis=-1)
 

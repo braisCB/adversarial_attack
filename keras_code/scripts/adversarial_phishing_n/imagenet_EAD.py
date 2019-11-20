@@ -1,5 +1,6 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import keras
 from keras_code.src import backend
 from keras_code.scripts import networks, model_folder, info_folder
 from keras_code.src.AdversarialPhishingN import AdversarialPhishingN
@@ -24,8 +25,8 @@ filename = 'imagenet_rank.json'
 min_max_filename = 'imagenet_min_max_input.json'
 image_batch_size = 1000
 batch_size = 25
-alpha = 1e-4
-threshs = [.0]
+alpha = 1e-5
+threshs = [0.]
 optimizer = optimizers.Adam(1e-3)
 
 n = 100
@@ -93,7 +94,7 @@ if __name__ == '__main__':
 
         new_filenames = []
         new_labels = []
-        for j in range(9):
+        for j in range(2):
             lab = np.random.randint(1000, size=(100, 1))
             while np.any(lab == image_labels):
                 p = np.where(lab == image_labels)[0]

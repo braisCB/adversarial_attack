@@ -133,6 +133,36 @@ if __name__ == '__main__':
         AMSD1_100[i] = L1_100[i] / R
         AMSD2_100[i] = L2_100[i] / np.sqrt(R)
 
+    print('L_0 : ', L0_1)
+    print('L_1 : ', L1_1)
+    print('L_2 : ', L2_1)
+    print('L_inf : ', Linf_1)
+    print('AMSD_0 : ', AMSD0_1)
+    print('AMSD_1 : ', AMSD1_1)
+    print('AMSD_2 : ', AMSD2_1)
+    print('AMUD : ', AMUD_1)
+
+    rank = np.zeros_like(L0_1)
+    scores = np.arange(len(rank))
+    # p = np.argsort(L0_1)
+    # rank[p] += scores
+    # p = np.argsort(L1_1)
+    # rank[p] += scores
+    # p = np.argsort(L2_1)
+    # rank[p] += scores
+    p = np.argsort(Linf_1)
+    rank[p] += scores
+    p = np.argsort(AMSD0_1)
+    rank[p] += scores
+    p = np.argsort(AMSD1_1)
+    rank[p] += scores
+    p = np.argsort(AMSD2_1)
+    rank[p] += scores
+    p = np.argsort(AMUD_1)[::-1]
+    rank[p] += scores
+
+    print('RANK : ', np.argsort(rank)[::-1])
+
     index = np.argsort(L2_1)
 
     fig = plt.figure()
@@ -292,8 +322,8 @@ if __name__ == '__main__':
     kvals = np.array(AMUD_100)[index]
     rects3 = ax.barh(ind + width, kvals, width, color='b')
 
-    ax.set_title('ImageNet T-AMUD$^N$ Results')
-    ax.set_xlabel('T-AMUD$^N$')
+    ax.set_title('ImageNet T-AMUD$^N_{0.95}$ Results')
+    ax.set_xlabel('T-AMUD$^N_{0.95}$')
     ax.set_xlim(.8, 1.)
     ax.set_yticks(ind + 0.5 * width)
     ax.set_yticklabels(np.array(network_names)[index])
